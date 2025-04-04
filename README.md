@@ -13,7 +13,7 @@
 - 🧾 **Auto-Generated Itineraries** – End-to-end travel plans, exportable as PDFs.
 
 ---
-
+## CodeLabs : https://codelabs-preview.appspot.com/?file_id=1fQP0SWzcP6RK2q4F1uP7kdM_ib6DFbKTyXTciWjbvb0#0
 ## 📌 Project Overview
 
 ### Scope
