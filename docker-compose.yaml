@@ -1,0 +1,47 @@
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: travel-buddy-server
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_SSL_MODE=${DB_SSL_MODE}
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - PORT=${PORT:-8000}
+    volumes:
+      - ./server:/app
+    networks:
+      - travel-buddy-network
+    restart: unless-stopped
+
+  # client:
+  #   build:
+  #     context: ./client
+  #     dockerfile: Dockerfile
+  #   container_name: travel-buddy-client
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - VITE_AUTH0_DOMAIN=${VITE_AUTH0_DOMAIN}
+  #     - VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID}
+  #     - VITE_AUTH0_REDIRECT_URI=${VITE_AUTH0_REDIRECT_URI}
+  #     - VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
+  #   volumes:
+  #     - ./client:/app
+  #     - /app/node_modules
+  #   networks:
+  #     - travel-buddy-network
+  #   restart: unless-stopped
+
+networks:
+  travel-buddy-network:
+    driver: bridge
