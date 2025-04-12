@@ -4,20 +4,24 @@ import HomePage from "./pages/HomePage"
 import AutHCallbackPage from "./pages/AuthCallbackPage";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import { ChatPage } from "./pages/ChatPage";
+import LandingPage from "./pages/LandingPage";
 
 
 const AppRouter = () => {
     return(
         <Routes>
             <Route path="/" element={
-            <Layout showHero showFooter>
-                <HomePage/>
+            <Layout showFooter showSidebar={false}>
+                <LandingPage/>
             </Layout>} />
-
+            
+            
+            
             <Route path="/auth-callback" element={
-           
-            <AutHCallbackPage/>
+                <AutHCallbackPage/>
             } />
+
+           
            
              {/* <Route path="/detail/:restaurantId"
              element = {
@@ -28,16 +32,17 @@ const AppRouter = () => {
             {
                  <Route path="/chat"
                  element = {
-                 <Layout showHero={false}>
+                 <Layout showHero={false} showSidebar>
                     <ChatPage/>
                  </Layout>} />
+                 
             }
-            {/* <Route path="/profile" element={
-            <Layout>
-                <UserProfilePage/>
-            </Layout>
-           
-            } /> */}
+            {
+                <Route path="/home" element={
+                    <Layout showHero showFooter>
+                        <HomePage/>
+                    </Layout>} />
+            } 
             {/* <Route path="/restaurant" element={
             <Layout>
                 <RestauarantPage/>

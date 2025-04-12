@@ -12,7 +12,7 @@ export function AppSidebar() {
         <div className="flex flex-col h-screen">
             {/* Logo at top */}
             <div className="p-4 border-b">
-                <Link to="/" className="flex items-center">
+                <Link to="/home" className="flex items-center">
                     <h1 className="text-xl font-bold">TravelBuddy</h1>
                 </Link>
             </div>

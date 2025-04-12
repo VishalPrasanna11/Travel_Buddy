@@ -22,7 +22,7 @@ if (!domain || !clientId || !redirectUri || !audience) {
          
 
         const onRedirectCallback = (appState?:AppState) => {
-            navigate(appState?.returnTo||"/auth-callback");
+            navigate(appState?.returnTo||"/home");
          
         }
 
