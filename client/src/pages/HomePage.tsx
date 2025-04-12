@@ -1,8 +1,9 @@
 // src/pages/HomePage.tsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, MapPin, Calendar, Bot, ChevronRight, Globe, Compass, Star, Sparkles, MessageSquare, PlaneTakeoff, Hotel, Utensils, Camera, Users, TrendingUp, Clock} from 'lucide-react';
-
+import { Search, MapPin, Bot, ChevronRight,Compass, Star, Sparkles,  PlaneTakeoff, Hotel, Utensils, Camera, Users, TrendingUp, Clock} from 'lucide-react';
+import { useAuth0 } from "@auth0/auth0-react";
+import { useCreateMyUser } from "@/api/UserApi";
 // Import shadcn components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,12 +11,9 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-// import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+
+import { useEffect, useRef } from "react";
+
 
 
 
@@ -23,9 +21,7 @@ import kyotoImg from '../assets/kyoto.jpeg';
 import barcelonaImage from '/src/assets/barcelona.jpeg';
 import newZealandImage from '/src/assets/new-zealand.jpeg';
 import marrakechImage from '/src/assets/marrakech.jpeg';
-import testimonial1Image from '/src/assets/testimonial-1.jpeg';
 import testimonial2Image from '/src/assets/testimonial-2.jpeg';
-import testimonial3Image from '/src/assets/testimonial-3.jpeg';
 import culturalImage from '/src/assets/cultural.jpeg';
 import adventureImage from '/src/assets/adventure.jpeg';
 import culinaryImage from '/src/assets/culinary.jpeg';
@@ -145,6 +141,21 @@ const travelCategories = [
 ];
 
 const HomePage = () => {
+  // Auth0 user authentication
+  //Don't remove this
+  const {user} = useAuth0();
+  const {createUser} = useCreateMyUser();
+  const naviagte = useNavigate();
+  const hasCreatedUser = useRef(false);
+  useEffect(() => {
+      if(user?.sub && user.email && !hasCreatedUser.current){
+          createUser({auth0id:user.sub,email:user.email});
+          hasCreatedUser.current = true;
+      }
+      naviagte("/home");
+  }, [createUser, naviagte, user]);
+
+  //Don't remove above
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [destination, setDestination] = useState("");
