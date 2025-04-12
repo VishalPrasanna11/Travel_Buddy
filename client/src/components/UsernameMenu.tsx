@@ -1,79 +1,122 @@
-import { CircleUserRound } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-import { useAuth0 } from "@auth0/auth0-react";
-import { Link } from "react-router-dom";
-import { Separator } from "./ui/separator";
-import { Button } from "./ui/button";
-
-const UsernameMenu = () => {
-  const { user, logout } = useAuth0();
-
-return (
-    <DropdownMenu>
-        <DropdownMenuTrigger
-        className="flex items-center px-3 font-boldgap-2"
-        style={{color:"#0A0A0A"}}
-        onMouseOver={(e) => e.currentTarget.style.color = '#FFBD58'}
-        onMouseOut={(e) => e.currentTarget.style.color = '#0A0A0A'}
-        >
-            <CircleUserRound className="text-black-500" />
-            {user?.name || user?.email}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-            <DropdownMenuItem>
-                {/* <Link
-                    to="/manage-restaurant"
-                    className="font-bold"
-                    onMouseOver={(e) => e.currentTarget.style.color = '#FFBD58'}
-                    onMouseOut={(e) => e.currentTarget.style.color = '#0A0A0A'}
-                >
-                    Manage Restaurant
-                </Link> */}
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-                <Link to="/profile" 
-                className="font-bold"
-                onMouseOver={(e) => e.currentTarget.style.color = '#FFBD58'}
-                onMouseOut={(e) => e.currentTarget.style.color = '#0A0A0A'}
-                >
-                    User Profile
-                </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-                <Link to="/restaurant" 
-                className="font-bold"
-                onMouseOver={(e) => e.currentTarget.style.color = '#FFBD58'}
-                onMouseOut={(e) => e.currentTarget.style.color = '#0A0A0A'}
-                >
-                   My Restaurant
-                </Link>
-            </DropdownMenuItem>
-            <Separator />
-            <DropdownMenuItem>
-                <Button
-                    onClick={() => logout()}
-                    className="flex flex-1 font-bold bg-black text-white"
-                    onMouseOver={(e) => {
-                        e.currentTarget.style.backgroundColor = 'white';
-                        e.currentTarget.style.color = '#0A0A0A';
-                    }}
-                    onMouseOut={(e) => {
-                        e.currentTarget.style.backgroundColor = '#0A0A0A';
-                        e.currentTarget.style.color = 'white';
-                    }}
-                    style={{backgroundColor: '#0A0A0A'}}
-                >
-                    Log Out
-                </Button>
-            </DropdownMenuItem>
-        </DropdownMenuContent>
-    </DropdownMenu>
-);
-};
-
-export default UsernameMenu;
+    BadgeCheck,
+    Bell,
+    ChevronsUpDown,
+    CreditCard,
+    LogOut,
+    Sparkles,
+  } from "lucide-react"
+  
+  import {
+    Avatar,
+    AvatarFallback,
+    AvatarImage,
+  } from "@/components/ui/avatar"
+  import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+  } from "@/components/ui/dropdown-menu"
+  import {
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    useSidebar,
+  } from "@/components/ui/sidebar"
+  import { useAuth0 } from "@auth0/auth0-react"
+  
+  export function UsernameMenu({
+    user,
+  }: {
+    user: {
+      name: string
+      email: string
+      // avatar: string
+    }
+  }) {
+    const { isMobile } = useSidebar()
+    const { logout } = useAuth0()
+    
+    const handleLogout = () => {
+      logout({ 
+        logoutParams: { 
+          returnTo: window.location.origin 
+        }
+      })
+    }
+  
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <SidebarMenuButton
+                size="lg"
+                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              >
+                <Avatar className="h-8 w-8 rounded-lg">
+                  {/* <AvatarImage src={user.avatar} alt={user.name} /> */}
+                  <AvatarFallback className="rounded-lg">
+                    {user.name.split(' ').map(name => name[0]).join('').substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">{user.name}</span>
+                  <span className="truncate text-xs">{user.email}</span>
+                </div>
+                <ChevronsUpDown className="ml-auto size-4" />
+              </SidebarMenuButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+              side={isMobile ? "bottom" : "right"}
+              align="end"
+              sideOffset={4}
+            >
+              <DropdownMenuLabel className="p-0 font-normal">
+                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    {/* <AvatarImage src={user.avatar} alt={user.name} /> */}
+                    <AvatarFallback className="rounded-lg">
+                      {user.name.split(' ').map(name => name[0]).join('').substring(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">{user.name}</span>
+                    <span className="truncate text-xs">{user.email}</span>
+                  </div>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  <span>Upgrade to Pro</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <BadgeCheck className="mr-2 h-4 w-4" />
+                  <span>Account</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  <span>Billing</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
+  }

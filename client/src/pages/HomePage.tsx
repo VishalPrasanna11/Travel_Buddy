@@ -1,5 +1,5 @@
 import mobileimg from "../assets/mobile.png";
-import appimg from "../assets/app.png";
+import hero from "../assets/hero.png";
 // import SearchBar, { SearchForm } from "@/components/SearchBar";
 import { useNavigate } from "react-router-dom";
 const HomePage = () => {
@@ -27,7 +27,7 @@ const HomePage = () => {
         <span>
             Download the app now!
         </span>
-        {/* <img src={appimg}/> */}
+        <img src={hero}/>
 
     </div>
     </div>
