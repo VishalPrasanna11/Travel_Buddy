@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 from routes.userRoute import router as user_router
 from models.userModel import Base
 from middlewares.conn_database import engine
+from routes.geocodeRoute import router as geocode_router
+from routes.chatRoute import router as chat_router
+
+
 
 # Configure logging
 logging.basicConfig(
@@ -47,6 +51,12 @@ app.add_middleware(
 
 # Include routers
 app.include_router(user_router, prefix="/api/users", tags=["users"])
+
+app.include_router(geocode_router, prefix="/api/maps", tags=["maps"])
+
+app.include_router(chat_router, prefix="/api", tags=["chat"])
+
+
 
 @app.get("/", tags=["root"])
 async def root():
