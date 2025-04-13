@@ -19,34 +19,28 @@ jobs:
         with:
           ref: main  # Ensure we're on the main branch
       
-      - name: Install sshpass
-        run: sudo apt-get update && sudo apt-get install -y sshpass
-      
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
-      
       - name: Deploy to server
-        env:
-          SSHPASS: ${{ secrets.SSH_PASSPHRASE }}
-        run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "sudo apt update && \
-          cd ~/Travel_Buddy && \
-          git config --local credential.helper store && \
-          echo 'https://${{ secrets.GH_PAT_TOKEN }}@github.com/DAMG7245/Travel_Buddy.git' > ~/.git-credentials && \
-          git pull && \
-          
-          # Server deployment
-          cd server && \
-          docker compose down && \
-          docker compose build && \
-          docker compose up -d && \
-          
-          # Client deployment
-          cd ../client && \
-          npm install --legacy-peer-deps && \
-          npm run build && \
-          pm2 restart npm -- run dev || pm2 start npm -- run dev"
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          script: |
+            sudo apt update
+            cd ~/Travel_Buddy
+            git config --local credential.helper store
+            echo 'https://${{ secrets.GH_PAT_TOKEN }}@github.com/DAMG7245/Travel_Buddy.git' > ~/.git-credentials
+            git pull
+            
+            # Server deployment
+            cd server
+            docker compose down
+            docker compose build
+            docker compose up -d
+            
+            # Client deployment
+            cd ../client
+            npm install --legacy-peer-deps
+            npm run build
+            pm2 restart npm -- run dev || pm2 start npm -- run dev
