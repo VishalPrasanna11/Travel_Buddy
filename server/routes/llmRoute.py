@@ -1,58 +1,45 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, EmailStr
-from controllers.llmController import LLMController
+from controllers.llmController import LLMController, Message
+from middlewares.conn_llm import get_openai_client
+from middlewares.conn_database import get_db  # Make sure this is imported
+from sqlalchemy.orm import Session
+from openai import OpenAI
+import logging
 
-# Create the router
 router = APIRouter()
 
-# Define message model
-class Message(BaseModel):
-    role: str
-    content: str
-
-# Define request model
 class QuestionRequest(BaseModel):
     query: str
-    chat_history: List[Message] = []
-    chat_id: str
-    user_email: EmailStr
+    chat_id: Optional[str] = None
+    user_email: Optional[EmailStr] = None
+    chat_history: Optional[List[Message]] = []
     
     class Config:
         schema_extra = {
             "example": {
-                "query": "What is the capital of France?",
-                "chat_history": [
-                    {"role": "user", "content": "Plan a vacation to Paris?"},
-                    {"role": "assistant", "content": "Planning a vacation to Paris is an exciting endeavor! Here's a suggested itinerary..."}
-                ],
-                "chat_id": "chat_123456",
-                "user_email": "user@example.com"
+                "query": "What are popular tourist destinations in Japan?",
+                "chat_id": None,  # This will be filled in if continuing a conversation
+                "user_email": "user@example.com",
+                "chat_history": []  # This will be filled with previous messages if needed
             }
         }
 
-# Define response model
-class QuestionResponse(BaseModel):
-    status: str
-    answer: str
-    model: str
-
-# Endpoint to ask a question to the LLM
-@router.post("/ask-question", response_model=QuestionResponse)
+@router.post("/ask-question")
 async def ask_question(
     request: QuestionRequest,
-    llm_controller: LLMController = Depends()
+    openai_client: OpenAI = Depends(get_openai_client),
+    db: Session = Depends(get_db)  # Make sure this dependency is here
 ) -> Dict[str, Any]:
- 
-    if not request.query or request.query.strip() == "":
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    # Log that we have a database connection
+    logging.info(f"Database connection available: {db is not None}")
     
-
-    response = await llm_controller.ask_question(
-        query=request.query, 
+    controller = LLMController(openai_client)
+    return await controller.ask_question(
+        query=request.query,
         chat_history=request.chat_history,
         chat_id=request.chat_id,
-        user_email=request.user_email
+        user_email=request.user_email,
+        db=db  # Make sure this is being passed to the controller
     )
-    
-    return response
