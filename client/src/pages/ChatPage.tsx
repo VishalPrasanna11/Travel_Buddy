@@ -1,7 +1,8 @@
 import { useState, useEffect, ChangeEvent } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useParams } from 'react-router-dom';
-import {v4 as uuidv4} from "uuid";
+import { useParams, useNavigate } from 'react-router-dom';
+import { v4 as uuidv4 } from "uuid";
+import { useAuth0 } from '@auth0/auth0-react';
 // Import your Travel AI API
 import { useAskTravelQuestion } from '@/api/LLMApi';
 import type { TravelResponse } from '@/types';
@@ -14,21 +15,104 @@ import { MessageInput } from '@/components/ui/message-input';
 import { Button } from '@/components/ui/button';
 import { type Message } from '@/components/ui/chat-message';
 
+// Import the database
+import { chatDb, Conversation } from '@/db/indexedDb';
+
+// Type for API messages
+type ApiMessage = {
+  role: string;
+  content: string;
+};
+
 export function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [conversationTitle, setConversationTitle] = useState('New Conversation');
   
   const params = useParams();
+  const navigate = useNavigate();
+  const conversationId = params.id || uuidv4();
+  
+  // Get user from Auth0
+  const { user } = useAuth0();
+  
   // Use your Travel AI hook
   const { askQuestion, isLoading } = useAskTravelQuestion();
   
-  // Fix: Use the correct type for onChange handler
+  // Load conversation from IndexedDB when component mounts
+  useEffect(() => {
+    const loadConversation = async () => {
+      await chatDb.init();
+      
+      if (params.id) {
+        const savedConversation = await chatDb.getConversation(params.id);
+        
+        if (savedConversation) {
+          setMessages(savedConversation.messages);
+          setConversationTitle(savedConversation.title);
+        } else {
+          const newConversation: Conversation = {
+            id: params.id,
+            title: 'New Conversation',
+            created_at: Date.now(),
+            updated_at: Date.now(),
+            messages: []
+          };
+          
+          await chatDb.saveConversation(newConversation);
+        }
+      }
+    };
+    
+    loadConversation();
+  }, [params.id]);
+  
+  useEffect(() => {
+    const saveMessages = async () => {
+      if (messages.length > 0 && conversationId) {
+        const existingConversation = await chatDb.getConversation(conversationId);
+        
+        let title = conversationTitle;
+        if (messages.length > 0 && messages[0].role === 'user' && title === 'New Conversation') {
+          title = messages[0].content.slice(0, 30) + (messages[0].content.length > 30 ? '...' : '');
+          setConversationTitle(title);
+        }
+        
+        const conversation: Conversation = {
+          id: conversationId,
+          title: title,
+          created_at: existingConversation?.created_at || Date.now(),
+          updated_at: Date.now(),
+          messages: messages
+        };
+        
+        await chatDb.saveConversation(conversation);
+      }
+    };
+    
+    // Only save if we have messages
+    if (messages.length > 0) {
+      saveMessages();
+    }
+  }, [messages, conversationId, conversationTitle]);
+  
   const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
   };
   
-  // Type-safe handleSubmit matching the expected signature
+  // Convert our UI messages to API message format
+  const formatMessagesForAPI = (msgs: Message[]): ApiMessage[] => {
+    // Only include the last 10 messages to avoid making the payload too large
+    const recentMessages = msgs.slice(-10);
+    
+    return recentMessages.map(msg => ({
+      // Make sure role is one that OpenAI accepts
+      role: msg.role === 'user' || msg.role === 'assistant' ? msg.role : 'user',
+      content: msg.content
+    }));
+  };
+  
   const handleSubmit = async (
     event?: { preventDefault?: () => void },
     options?: { experimental_attachments?: FileList }
@@ -39,33 +123,44 @@ export function ChatPage() {
     
     // Create user message
     const userMessage: Message = {
-      id: params.id || uuidv4(),
+      id: uuidv4(),
       role: "user",
       content: input,
       createdAt: new Date()
     };
     
-    // Add user message to chat
-    setMessages(prev => [...prev, userMessage]);
+    // Update UI immediately
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput('');
     setIsTyping(true);
     
     try {
-      // Call your Travel AI API
-      const response: TravelResponse = await askQuestion({ query: userMessage.content });
+      // Format messages for API and send request
+      const formattedMessages = formatMessagesForAPI(messages);
+      
+      console.log("Sending chat history:", formattedMessages);
+      
+      const response: TravelResponse = await askQuestion({ 
+        query: userMessage.content,
+        chat_history: formattedMessages,
+        chat_id: conversationId,
+        user_email: user?.email
+      });
       
       // Create assistant message from response
       const assistantMessage: Message = {
-        id: params.id || uuidv4(),
+        id: uuidv4(),
         role: "assistant",
         content: response.answer,
         createdAt: new Date()
       };
       
-      // Add assistant message to chat
-      setMessages(prev => [...prev, assistantMessage]);
-    } catch (_error) {
-      // Handle error - add error message
+      // Update messages with assistant response
+      setMessages([...updatedMessages, assistantMessage]);
+    } catch (error) {
+      console.error("Error submitting message:", error);
+      // Handle error
       const errorMessage: Message = {
         id: uuidv4(),
         role: "assistant",
@@ -73,7 +168,7 @@ export function ChatPage() {
         createdAt: new Date()
       };
       
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages([...updatedMessages, errorMessage]);
     } finally {
       setIsTyping(false);
     }
@@ -87,13 +182,21 @@ export function ChatPage() {
       createdAt: new Date()
     };
     
-    setMessages(prev => [...prev, newMessage]);
+    const updatedMessages = [...messages, newMessage];
+    setMessages(updatedMessages);
     
     if (message.role === "user") {
-      // Automatically submit the suggested question
       setIsTyping(true);
       
-      askQuestion({ query: message.content })
+      // Format messages for API
+      const formattedMessages = formatMessagesForAPI(messages);
+      
+      askQuestion({ 
+        query: message.content,
+        chat_history: formattedMessages,
+        chat_id: conversationId,
+        user_email: user?.email
+      })
         .then((response: TravelResponse) => {
           const assistantMessage: Message = {
             id: uuidv4(),
@@ -102,10 +205,11 @@ export function ChatPage() {
             createdAt: new Date()
           };
           
-          setMessages(prev => [...prev, assistantMessage]);
+          setMessages([...updatedMessages, assistantMessage]);
           setIsTyping(false);
         })
-        .catch((_error) => {
+        .catch((error) => {
+          console.error("Error appending message:", error);
           const errorMessage: Message = {
             id: uuidv4(),
             role: "assistant",
@@ -113,7 +217,7 @@ export function ChatPage() {
             createdAt: new Date()
           };
           
-          setMessages(prev => [...prev, errorMessage]);
+          setMessages([...updatedMessages, errorMessage]);
           setIsTyping(false);
         });
     }
