@@ -30,7 +30,7 @@ const AppRouter = () => {
              </Layout>} /> */}
             <Route element={<ProtectedRoute/>}>
             {
-                 <Route path="/chat"
+                 <Route path="/chat/:id"
                  element = {
                  <Layout showHero={false} showSidebar>
                     <ChatPage/>

@@ -63,3 +63,9 @@ export type User = {
       pages: number;
     };
   };
+
+  export type TravelResponse = {
+    status: string;   
+    answer: string;   
+    model: string;    
+  };
