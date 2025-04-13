@@ -5,7 +5,10 @@ import logging
 from dotenv import load_dotenv
 
 from routes.userRoute import router as user_router
+from routes.llmRoute import router as llm_router
+from routes.llm_chat_historyRoute import router as llm_chat_history_router
 from models.userModel import Base
+from models.llm_chat_historyModel import Base as ChatHistoryBase
 from middlewares.conn_database import engine
 
 # Configure logging
@@ -21,6 +24,7 @@ load_dotenv()
 # Create database tables automatically
 logger.info("Creating database tables if they don't exist...")
 Base.metadata.create_all(bind=engine)
+ChatHistoryBase.metadata.create_all(bind=engine)
 logger.info("Database tables initialization complete")
 
 # Create FastAPI application
@@ -47,6 +51,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(user_router, prefix="/api/users", tags=["users"])
+app.include_router(llm_router, prefix="/api/llm", tags=["llm"])
+app.include_router(llm_chat_history_router, prefix="/api/user", tags=["user"])
+
 
 @app.get("/", tags=["root"])
 async def root():
