@@ -25,15 +25,15 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
       
       - name: Deploy to server
         env:
           SSHPASS: ${{ secrets.SSH_PASSPHRASE }}
         run: |
-          sshpass -e ssh -i ~/.ssh/id_rsa ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "sudo apt update && \
+          sshpass -e ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "sudo apt update && \
           cd ~/Travel_Buddy && \
           git config --local credential.helper store && \
           echo 'https://${{ secrets.GH_PAT_TOKEN }}@github.com/DAMG7245/Travel_Buddy.git' > ~/.git-credentials && \
