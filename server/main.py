@@ -5,6 +5,7 @@ import logging
 from dotenv import load_dotenv
 
 from routes.userRoute import router as user_router
+from routes.llmRoute import router as llm_router
 from models.userModel import Base
 from middlewares.conn_database import engine
 
@@ -47,6 +48,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(user_router, prefix="/api/users", tags=["users"])
+app.include_router(llm_router, prefix="/api/llm", tags=["llm"])
 
 @app.get("/", tags=["root"])
 async def root():

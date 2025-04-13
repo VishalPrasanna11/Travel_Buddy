@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { useChat } from '@ai-sdk/react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import {v4 as uuidv4} from "uuid";
+// Import your Travel AI API
+import { useAskTravelQuestion } from '@/api/LLMApi';
+import type { TravelResponse } from '@/types';
 
 // Import your custom UI components
 import { ChatContainer } from '@/components/ui/chat';
@@ -11,29 +15,116 @@ import { Button } from '@/components/ui/button';
 import { type Message } from '@/components/ui/chat-message';
 
 export function ChatPage() {
-  const {
-    messages: aiMessages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    append,
-    isLoading,
-    stop,
-  } = useChat();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
   
-  // Convert messages from UIMessage[] to Message[]
-  const messages = aiMessages.map(msg => {
-    return {
-      id: msg.id,
-      role: msg.role,
-      content: msg.content?.toString() || "",
+  const params = useParams();
+  // Use your Travel AI hook
+  const { askQuestion, isLoading } = useAskTravelQuestion();
+  
+  // Fix: Use the correct type for onChange handler
+  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+  };
+  
+  // Type-safe handleSubmit matching the expected signature
+  const handleSubmit = async (
+    event?: { preventDefault?: () => void },
+    options?: { experimental_attachments?: FileList }
+  ) => {
+    event?.preventDefault?.();
+    
+    if (!input.trim()) return;
+    
+    // Create user message
+    const userMessage: Message = {
+      id: params.id || uuidv4(),
+      role: "user",
+      content: input,
       createdAt: new Date()
-    } as Message;
-  });
+    };
+    
+    // Add user message to chat
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsTyping(true);
+    
+    try {
+      // Call your Travel AI API
+      const response: TravelResponse = await askQuestion({ query: userMessage.content });
+      
+      // Create assistant message from response
+      const assistantMessage: Message = {
+        id: params.id || uuidv4(),
+        role: "assistant",
+        content: response.answer,
+        createdAt: new Date()
+      };
+      
+      // Add assistant message to chat
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (_error) {
+      // Handle error - add error message
+      const errorMessage: Message = {
+        id: uuidv4(),
+        role: "assistant",
+        content: "Sorry, I couldn't process your request. Please try again.",
+        createdAt: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
   
-  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const append = (message: {role: string, content: string}) => {
+    const newMessage: Message = {
+      id: uuidv4(),
+      role: message.role as "user" | "assistant",
+      content: message.content,
+      createdAt: new Date()
+    };
+    
+    setMessages(prev => [...prev, newMessage]);
+    
+    if (message.role === "user") {
+      // Automatically submit the suggested question
+      setIsTyping(true);
+      
+      askQuestion({ query: message.content })
+        .then((response: TravelResponse) => {
+          const assistantMessage: Message = {
+            id: uuidv4(),
+            role: "assistant",
+            content: response.answer,
+            createdAt: new Date()
+          };
+          
+          setMessages(prev => [...prev, assistantMessage]);
+          setIsTyping(false);
+        })
+        .catch((_error) => {
+          const errorMessage: Message = {
+            id: uuidv4(),
+            role: "assistant",
+            content: "Sorry, I couldn't process your request. Please try again.",
+            createdAt: new Date()
+          };
+          
+          setMessages(prev => [...prev, errorMessage]);
+          setIsTyping(false);
+        });
+    }
+  };
+  
+  const stop = () => {
+    // Since your API doesn't support streaming, this is a no-op
+    // But we keep it for API compatibility
+  };
+  
   const isEmpty = messages.length === 0;
-  const isTyping = lastMessage?.role === "user";
   
   // For mobile prompt carousel
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -72,11 +163,11 @@ export function ChatPage() {
   }, [isMobile, isEmpty, currentIndex]);
   
   return (
-    <ChatContainer className="flex flex-col h-[calc(95vh-64px)]"> {/* Adjust 64px to match your header height */}
+    <ChatContainer className="flex flex-col h-[calc(95vh-64px)]">
       <div className="flex-1">
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full">
-            <h2 className="text-xl font-medium mb-6">Try asking</h2>
+            <h2 className="text-xl font-medium mb-6">Travel Assistant</h2>
             
             {isMobile ? (
               /* Mobile: Show only one suggestion at a time with padding */
@@ -150,15 +241,12 @@ export function ChatPage() {
         isPending={isLoading || isTyping}
         handleSubmit={handleSubmit}
       >
-        {({ files, setFiles }) => (
+        {({ setFiles }) => (
           <MessageInput
             value={input}
             onChange={handleInputChange}
-            allowAttachments
-            files={files}
-            setFiles={setFiles}
             stop={stop}
-            isGenerating={isLoading}
+            isGenerating={isLoading || isTyping}
           />
         )}
       </ChatForm>
