@@ -1,3 +1,4 @@
+// Fixed version of sidebar.tsx with React.forwardRef for SidebarTrigger and SidebarMenuButton
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { VariantProps, cva } from "class-variance-authority"
@@ -251,15 +252,16 @@ function Sidebar({
   )
 }
 
-function SidebarTrigger({
-  className,
-  onClick,
-  ...props
-}: React.ComponentProps<typeof Button>) {
+// FIX 1: Convert SidebarTrigger to use React.forwardRef
+const SidebarTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<typeof Button>
+>(({ className, onClick, ...props }, ref) => {
   const { toggleSidebar } = useSidebar()
 
   return (
     <Button
+      ref={ref}
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       variant="ghost"
@@ -275,7 +277,8 @@ function SidebarTrigger({
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )
-}
+})
+SidebarTrigger.displayName = "SidebarTrigger"
 
 function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   const { toggleSidebar } = useSidebar()
@@ -493,7 +496,17 @@ const sidebarMenuButtonVariants = cva(
   }
 )
 
-function SidebarMenuButton({
+// FIX 2: Convert SidebarMenuButton to use React.forwardRef
+const SidebarMenuButton = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<"button"> & {
+    asChild?: boolean;
+    isActive?: boolean;
+    tooltip?: string | React.ComponentProps<typeof TooltipContent>;
+    variant?: VariantProps<typeof sidebarMenuButtonVariants>["variant"];
+    size?: VariantProps<typeof sidebarMenuButtonVariants>["size"];
+  }
+>(({
   asChild = false,
   isActive = false,
   variant = "default",
@@ -501,16 +514,13 @@ function SidebarMenuButton({
   tooltip,
   className,
   ...props
-}: React.ComponentProps<"button"> & {
-  asChild?: boolean
-  isActive?: boolean
-  tooltip?: string | React.ComponentProps<typeof TooltipContent>
-} & VariantProps<typeof sidebarMenuButtonVariants>) {
+}, ref) => {
   const Comp = asChild ? Slot : "button"
   const { isMobile, state } = useSidebar()
 
   const button = (
     <Comp
+      ref={ref}
       data-slot="sidebar-menu-button"
       data-sidebar="menu-button"
       data-size={size}
@@ -541,7 +551,8 @@ function SidebarMenuButton({
       />
     </Tooltip>
   )
-}
+})
+SidebarMenuButton.displayName = "SidebarMenuButton"
 
 function SidebarMenuAction({
   className,

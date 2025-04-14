@@ -10,6 +10,10 @@ from routes.llm_chat_historyRoute import router as llm_chat_history_router
 from models.userModel import Base
 from models.llm_chat_historyModel import Base as ChatHistoryBase
 from middlewares.conn_database import engine
+from routes.geocodeRoute import router as geocode_router
+from routes.chatRoute import router as chat_router
+
+
 
 # Configure logging
 logging.basicConfig(
@@ -53,6 +57,12 @@ app.add_middleware(
 app.include_router(user_router, prefix="/api/users", tags=["users"])
 app.include_router(llm_router, prefix="/api/llm", tags=["llm"])
 app.include_router(llm_chat_history_router, prefix="/api/user", tags=["user"])
+
+
+app.include_router(geocode_router, prefix="/api/maps", tags=["maps"])
+
+app.include_router(chat_router, prefix="/api", tags=["chat"])
+
 
 
 @app.get("/", tags=["root"])
