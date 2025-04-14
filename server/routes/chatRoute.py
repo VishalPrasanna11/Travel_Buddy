@@ -1,22 +1,3 @@
-# # routes/chatRoute.py
-# from fastapi import APIRouter, Request
-# from pydantic import BaseModel
-
-# router = APIRouter()
-
-# class ChatRequest(BaseModel):
-#     message: str
-
-# @router.post("/chat")
-# async def chat_endpoint(payload: ChatRequest):
-#     # For now, just echo back the message
-#     return {
-#         "response": f"Received: {payload.message}"
-#     }
-
-
-#last try - working
-
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List

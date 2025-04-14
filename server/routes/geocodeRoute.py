@@ -1,8 +1,3 @@
-"""
-Geocoding route for Google Maps API
-This proxy helps avoid CORS issues when making requests from the frontend
-"""
-
 from fastapi import APIRouter, HTTPException, Query
 import httpx
 import os

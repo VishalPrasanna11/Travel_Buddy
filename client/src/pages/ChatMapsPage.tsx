@@ -21,7 +21,7 @@ function ChatArea() {
     isLoading,
     stop,
   } = useChat({
-    api: '/api/chat',
+    api: '/api/chatmaps',
     onError: (error) => {
       console.error('useChat error:', error);
     }
