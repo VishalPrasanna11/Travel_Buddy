@@ -6,6 +6,7 @@ import ProtectedRoute from "./auth/ProtectedRoute"
 import ChatPage from "./pages/ChatPage"
 import ChatMapsPage from "./pages/ChatMapsPage"
 import LandingPage from "./pages/LandingPage"
+import ChatMainPage from "./pages/ChatMainPage"
 
 const AppRouter = () => {
   return (
@@ -20,47 +21,31 @@ const AppRouter = () => {
         }
       />
 
-
       {/* Public Route - Auth Callback */}
       <Route path="/auth-callback" element={<AuthCallbackPage />} />
 
       {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>
-        <Route
-          path="/chat"
+        
+        
+        <Route 
+          path="/chat/:id"
           element={
             <Layout showHero={false} showSidebar>
-              <ChatPage />
-
-           
-           
-             {/* <Route path="/detail/:restaurantId"
-             element = {
-             <Layout showHero={false}>
-                <DetailPage/>
-             </Layout>} /> */}
-            <Route element={<ProtectedRoute/>}>
-            {
-                 <Route path="/chat/:id"
-                 element = {
-                 <Layout showHero={false} showSidebar>
-                    <ChatPage/>
-                 </Layout>} />
-                 
-            }
-            {
-                <Route path="/home" element={
-                    <Layout showHero showFooter>
-                        <HomePage/>
-                    </Layout>} />
-            } 
-            {/* <Route path="/restaurant" element={
-            <Layout>
-                <RestauarantPage/>
-
+              <ChatMainPage />
             </Layout>
-          }
+          } 
         />
+        
+        <Route 
+          path="/home" 
+          element={
+            <Layout showHero showFooter>
+              <HomePage />
+            </Layout>
+          } 
+        />
+        
         <Route
           path="/chatmaps"
           element={
@@ -70,13 +55,14 @@ const AppRouter = () => {
           }
         />
         <Route
-          path="/home"
+          path="/chatmain/:id"
           element={
-            <Layout showHero showFooter>
-              <HomePage />
+            <Layout showHero={false} showSidebar>
+             <ChatMainPage />
             </Layout>
           }
         />
+
       </Route>
 
       {/* Catch-all redirect */}
@@ -86,67 +72,3 @@ const AppRouter = () => {
 }
 
 export default AppRouter
-
-
-
-
-
-
-
-
-
-// import { Route, Routes } from "react-router-dom"
-// import Layout from "./layouts/layout" 
-// import HomePage from "./pages/HomePage"
-// import AutHCallbackPage from "./pages/AuthCallbackPage";
-// import ProtectedRoute from "./auth/ProtectedRoute";
-// import ChatPage from "./pages/ChatPage";
-// import ChatMapsPage from "./pages/ChatMapsPage";
-// import LandingPage from "./pages/LandingPage";
-// import { Navigate } from "react-router-dom";
-
-// const AppRouter = () => {
-//     return(
-//         <Routes>
-//             <Route path="/" element={
-//             <Layout showFooter showSidebar={false}>
-//                 <LandingPage/>
-//             </Layout>} />
-            
-//             <Route path="/auth-callback" element={
-//                 <AutHCallbackPage/>
-//             } />
-           
-//             <Route element={<ProtectedRoute/>}>
-//                 <Route path="/chat"
-//                 element = {
-//                 <Layout showHero={false} showSidebar>
-//                     <ChatPage/>
-//                 </Layout>} />
-
-//                 <Route element={<ProtectedRoute/>}>
-//                 <Route path="/chatmaps"
-//                 element = {
-//                 <Layout showHero={false} showSidebar>
-//                     <ChatMapsPage/>
-//                 </Layout>} />
-
-//                 </Route>
-                
-//                 <Route path="/home" element={
-//                     <Layout showHero showFooter>
-//                         <HomePage/>
-//                     </Layout>} />
-
-//                 {/* <Route path="/maps" element={
-//                     <Layout showHero={false} showFooter>
-//                         <Maps/>
-//                     </Layout>} /> */}
-//             </Route>
-            
-//         </Routes>
-//     )}
-// export default AppRouter;
-
-
-
