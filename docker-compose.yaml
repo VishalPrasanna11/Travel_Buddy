@@ -17,6 +17,7 @@ services:
       - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
       - FRONTEND_URL=${FRONTEND_URL}
       - PORT=${PORT:-8000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - ./server:/app
     networks:

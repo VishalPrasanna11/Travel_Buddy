@@ -3,11 +3,15 @@ import { MessageSquare, Search, BookmarkIcon, Bell, Lightbulb, Plus, LogIn, Menu
 import { useAuth0 } from "@auth0/auth0-react";
 import { UsernameMenu } from "./UsernameMenu";
 import MenuItem from "./MenuItem";
+import {v4 as uuidv4} from "uuid";
 
 
 export function AppSidebar() {
     const { isAuthenticated, loginWithRedirect, user } = useAuth0();
     
+    const generateUniqueId = () => {
+        return uuidv4();
+    };
     return (
         <div className="flex flex-col h-screen">
             {/* Logo at top */}
@@ -22,7 +26,7 @@ export function AppSidebar() {
             
             {/* New chat button */}
             <div className="p-4">
-    <Link to="/chat/" className="block">
+    <Link to={`/chat/${generateUniqueId()}`} className="block">
         <button className="w-full py-2 px-4 bg-gray-100 rounded-full hover:bg-gray-200 text-center">
             New chat
         </button>

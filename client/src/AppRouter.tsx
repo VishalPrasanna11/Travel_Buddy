@@ -20,6 +20,7 @@ const AppRouter = () => {
         }
       />
 
+
       {/* Public Route - Auth Callback */}
       <Route path="/auth-callback" element={<AuthCallbackPage />} />
 
@@ -30,6 +31,33 @@ const AppRouter = () => {
           element={
             <Layout showHero={false} showSidebar>
               <ChatPage />
+
+           
+           
+             {/* <Route path="/detail/:restaurantId"
+             element = {
+             <Layout showHero={false}>
+                <DetailPage/>
+             </Layout>} /> */}
+            <Route element={<ProtectedRoute/>}>
+            {
+                 <Route path="/chat/:id"
+                 element = {
+                 <Layout showHero={false} showSidebar>
+                    <ChatPage/>
+                 </Layout>} />
+                 
+            }
+            {
+                <Route path="/home" element={
+                    <Layout showHero showFooter>
+                        <HomePage/>
+                    </Layout>} />
+            } 
+            {/* <Route path="/restaurant" element={
+            <Layout>
+                <RestauarantPage/>
+
             </Layout>
           }
         />
