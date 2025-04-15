@@ -62,7 +62,6 @@ const AppRouter = () => {
             </Layout>
           }
         />
-
       </Route>
 
       {/* Catch-all redirect */}
