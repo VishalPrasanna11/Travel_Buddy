@@ -2,20 +2,71 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
+from airflow.models import Variable
 from datetime import datetime, timedelta
 import json
 import snowflake.connector
 from snowflake.connector.pandas_tools import write_pandas
 import pandas as pd
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+import boto3
+import os
+
+# Function to download file from S3
+def download_from_s3(bucket, key, local_path):
+    """
+    Download a file from S3 to a local path
+    """
+    s3_client = boto3.client('s3')
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    s3_client.download_file(bucket, key, local_path)
+    return local_path
 
 def read_json_file(file_path):
     with open(file_path, 'r') as f:
         return json.dumps(json.load(f))
 
+def download_daily_data(**context):
+    """
+    Download daily flight data from S3 bucket specified in DAG configuration
+    """
+    # Get S3 path from DAG configuration
+    daily_s3_bucket = context['dag_run'].conf.get('daily_s3_bucket', 'default-bucket')
+    daily_s3_key = context['dag_run'].conf.get('daily_s3_key', 'data3.json')
+    
+    # Local path to save the downloaded file
+    local_path = f'/tmp/{daily_s3_key}'
+    
+    # Download the file
+    download_path = download_from_s3(daily_s3_bucket, daily_s3_key, local_path)
+    
+    # Return the local path for use in subsequent tasks
+    return download_path
+
+def download_monthly_data(**context):
+    """
+    Download monthly flight data from S3 bucket specified in DAG configuration
+    """
+    # Get S3 path from DAG configuration
+    monthly_s3_bucket = context['dag_run'].conf.get('monthly_s3_bucket', 'default-bucket')
+    monthly_s3_key = context['dag_run'].conf.get('monthly_s3_key', 'data2.json')
+    
+    # Local path to save the downloaded file
+    local_path = f'/tmp/{monthly_s3_key}'
+    
+    # Download the file
+    download_path = download_from_s3(monthly_s3_bucket, monthly_s3_key, local_path)
+    
+    # Return the local path for use in subsequent tasks
+    return download_path
+
 def process_daily_flights_data(**context):
-    json_data = context['task_instance'].xcom_pull(task_ids='read_daily_json')
-    data = json.loads(json_data)
+    # Get the local path of the downloaded file
+    json_file_path = context['task_instance'].xcom_pull(task_ids='download_daily_data')
+    
+    # Read and parse the JSON file
+    with open(json_file_path, 'r') as f:
+        data = json.load(f)
     
     # Process the data into a list of dictionaries
     processed_data = []
@@ -37,41 +88,12 @@ def process_daily_flights_data(**context):
     
     return json.dumps(processed_data)
 
-def process_and_load_daily_flights(**context):
-    # Get the JSON data
-    json_data = context['task_instance'].xcom_pull(task_ids='read_daily_json')
-    data = json.loads(json_data)
+def read_monthly_data(**context):
+    # Get the local path of the downloaded file
+    json_file_path = context['task_instance'].xcom_pull(task_ids='download_monthly_data')
     
-    # Process the data into a list of dictionaries
-    processed_data = []
-    for itinerary in data.get("data", {}).get("itineraries", []):
-        for leg in itinerary.get("legs", []):
-            for carrier in leg.get("carriers", {}).get("marketing", []):
-                for segment in leg.get("segments", []):
-                    processed_data.append({
-                        "flight_id": itinerary.get("id"),
-                        "price_raw": itinerary.get("price", {}).get("raw"),
-                        "price_formatted": itinerary.get("price", {}).get("formatted"),
-                        "origin_id": leg.get("origin", {}).get("id"),
-                        "destination_id": leg.get("destination", {}).get("id"),
-                        "departure_time": leg.get("departure"),
-                        "arrival_time": leg.get("arrival"),
-                        "airline_name": carrier.get("name"),
-                        "flight_number": segment.get("flightNumber")
-                    })
-    
-    # Convert to DataFrame
-    df = pd.DataFrame(processed_data)
-    
-    # Use SnowflakeHook to get connection
-    hook = SnowflakeHook(snowflake_conn_id='snowflake_conn')
-    
-    # Write to Snowflake using the hook
-    hook.insert_rows(
-        table='DAILY_FLIGHTS',
-        rows=df.values.tolist(),
-        target_fields=df.columns.tolist()
-    )
+    # Read and return the JSON file contents
+    return read_json_file(json_file_path)
 
 default_args = {
     'owner': 'airflow',
@@ -115,9 +137,7 @@ create_daily_flights_table = SnowflakeOperator(
     USE DATABASE FINAL_PROJECT;
     USE SCHEMA PUBLIC;
     
-    -- Drop the table if it exists to ensure clean state
-    
-    -- Create the main table
+    -- Create the main table if it doesn't exist
     CREATE TABLE IF NOT EXISTS daily_flights (
         flight_id VARCHAR,
         price_raw FLOAT,
@@ -160,19 +180,18 @@ create_monthly_flights_table = SnowflakeOperator(
     dag=extractDag
 )
 
-# Read daily flights JSON
-read_daily_json = PythonOperator(
-    task_id='read_daily_json',
-    python_callable=read_json_file,
-    op_kwargs={'file_path': '/opt/airflow/data/data3.json'},
+# Download data from S3
+download_daily_data = PythonOperator(
+    task_id='download_daily_data',
+    python_callable=download_daily_data,
+    provide_context=True,
     dag=extractDag
 )
 
-# Read monthly flights JSON
-read_monthly_json = PythonOperator(
-    task_id='read_monthly_json',
-    python_callable=read_json_file,
-    op_kwargs={'file_path': '/opt/airflow/data/data2.json'},
+download_monthly_data = PythonOperator(
+    task_id='download_monthly_data',
+    python_callable=download_monthly_data,
+    provide_context=True,
     dag=extractDag
 )
 
@@ -180,6 +199,14 @@ read_monthly_json = PythonOperator(
 process_daily_json = PythonOperator(
     task_id='process_daily_json',
     python_callable=process_daily_flights_data,
+    provide_context=True,
+    dag=extractDag
+)
+
+# Read monthly flights JSON
+read_monthly_json = PythonOperator(
+    task_id='read_monthly_json',
+    python_callable=read_monthly_data,
     provide_context=True,
     dag=extractDag
 )
@@ -246,7 +273,7 @@ load_monthly_flights = SnowflakeOperator(
         flight_number
     )
     WITH json_data AS (
-        SELECT PARSE_JSON('{{ task_instance.xcom_pull(task_ids='read_monthly_json') }}') as json
+        SELECT PARSE_JSON('{{ task_instance.xcom_pull(task_ids="read_monthly_json") }}') as json
     )
     SELECT DISTINCT
         r.value:id::VARCHAR as flight_id,
@@ -267,7 +294,8 @@ load_monthly_flights = SnowflakeOperator(
 
 # Set task dependencies
 init_database >> [create_daily_flights_table, create_monthly_flights_table]
-create_daily_flights_table >> read_daily_json >> process_daily_json >> load_daily_flights
-create_monthly_flights_table >> read_monthly_json >> load_monthly_flights
+create_daily_flights_table >> download_daily_data >> process_daily_json >> load_daily_flights
+create_monthly_flights_table >> download_monthly_data >> read_monthly_json >> load_monthly_flights
 
+# This exposes the DAG
 extractDag
