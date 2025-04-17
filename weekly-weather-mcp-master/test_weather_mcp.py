@@ -34,31 +34,10 @@ def mock_tool_decorator():
     return decorator
 
 sys.modules['mcp.server.fastmcp'].FastMCP().tool = mock_tool_decorator
-# Mock weather_agent to avoid dependency chain
-sys.modules['weather_agent'] = MagicMock()
-sys.modules['weather_agent'].create_weather_agent = MagicMock(return_value=MagicMock())
+
 # Now import should work
-# Now before importing weather_mcp_server, patch the get_weather and get_current_weather functions
-# to return the format expected by the tests
-def patched_get_weather(location, api_key=None, timezone_offset=0):
-    """Test compatible version of get_weather"""
-    return weather_mcp_server.get_weather_forecast(location, timezone_offset, api_key)
-
-def patched_get_current_weather(location, api_key=None, timezone_offset=0):
-    """Test compatible version of get_current_weather"""
-    weather_data = weather_mcp_server.get_weather_forecast(location, timezone_offset, api_key)
-    if 'error' in weather_data:
-        return weather_data
-    if 'current' not in weather_data:
-        return {'error': 'Unable to get current weather information'}
-    return weather_data['current']
-
-
-
 import weather_mcp_server
 
-weather_mcp_server.get_weather = patched_get_weather
-weather_mcp_server.get_current_weather = patched_get_current_weather
 
 class TestWeatherMCP(unittest.TestCase):
     """Test the Weather MCP server functionality"""
