@@ -11,6 +11,8 @@ sightseeing
 attractions
 accommodation
 booking
+planning
+explore
 itinerary
 guide
 tour

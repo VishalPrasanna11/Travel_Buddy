@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
-import shortuuid
+import uuid
 
 Base = declarative_base()
 
@@ -12,7 +12,7 @@ class ChatSession(Base):
     __tablename__ = 'chat_sessions'
 
     # Change from UUID to String
-    id = Column(String(22), primary_key=True, default=lambda: shortuuid.uuid())
+    id = Column(String(36), primary_key=True)
     user_email = Column(String, nullable=False, index=True)
     created_at = Column(DateTime, default=func.now())
     last_updated = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -33,8 +33,8 @@ class ChatMessage(Base):
     __tablename__ = 'chat_messages'
 
     # Change from UUID to String
-    id = Column(String(22), primary_key=True, default=lambda: shortuuid.uuid())
-    session_id = Column(String(22), ForeignKey('chat_sessions.id', ondelete='CASCADE'), nullable=False)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String(36), ForeignKey('chat_sessions.id', ondelete='CASCADE'), nullable=False)
     role = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=func.now())
