@@ -99,33 +99,81 @@ def process_hotel_data(**context):
         print(f"Error processing hotel data: {e}")
         return json.dumps([])
 
-def download_attractions_data(**context):
+def load_hotels_to_snowflake(**context):
     """
-    Download attractions data from S3 bucket specified in DAG configuration
+    Load processed hotel data into Snowflake using SnowflakeHook
     """
-    # Get S3 path from DAG configuration
-    attractions_s3_bucket = context['dag_run'].conf.get('attractions_s3_bucket', 'default-bucket')
-    attractions_s3_key = context['dag_run'].conf.get('attractions_s3_key', 'attractionsdata.json')
+    json_str = context['task_instance'].xcom_pull(task_ids='process_hotel_json')
+    if not json_str:
+        print("No hotel data to load")
+        return
     
-    # Local path to save the downloaded file
-    local_path = f'/tmp/{attractions_s3_key}'
+    # Parse the JSON string back to Python object
+    hotels_data = json.loads(json_str)
     
-    # Download the file
-    download_path = download_from_s3(attractions_s3_bucket, attractions_s3_key, local_path)
+    # Get Snowflake connection
+    hook = SnowflakeHook(snowflake_conn_id='snowflake_conn')
     
-    # Return the local path for use in subsequent tasks
-    return download_path
-
-def read_attractions_data(**context):
-    """
-    Read attractions data from the downloaded file
-    """
-    # Get the local path of the downloaded file
-    json_file_path = context['task_instance'].xcom_pull(task_ids='download_attractions_data')
+    # Set up connection parameters
+    conn = hook.get_conn()
+    cursor = conn.cursor()
     
-    # Read and return the JSON file contents
-    with open(json_file_path, 'r') as f:
-        return json.dumps(json.load(f))
+    try:
+        # Use warehouse, database and schema
+        cursor.execute("USE WAREHOUSE COMPUTE_WH")
+        cursor.execute("USE DATABASE HOTEL_PROJECT")
+        cursor.execute("USE SCHEMA PUBLIC")
+        
+        # Prepare batches for insertion (to avoid too large SQL statements)
+        batch_size = 100
+        total_inserted = 0
+        
+        for i in range(0, len(hotels_data), batch_size):
+            batch = hotels_data[i:i+batch_size]
+            
+            # Prepare the insert statement
+            insert_stmt = """
+            INSERT INTO hotels (
+                chain_code, iata_code, dupe_id, name, hotel_id, latitude, longitude,
+                country_code, distance_value, distance_unit, last_update, is_sponsored
+            ) VALUES 
+            """
+            
+            values = []
+            for hotel in batch:
+                # Format each value properly, handling null values
+                chain_code = f"'{hotel['chain_code']}'" if hotel['chain_code'] is not None else 'NULL'
+                iata_code = f"'{hotel['iata_code']}'" if hotel['iata_code'] is not None else 'NULL'
+                dupe_id = f"{hotel['dupe_id']}" if hotel['dupe_id'] is not None else 'NULL'
+                name = f"'{hotel['name'].replace("'", "''")}'" if hotel['name'] is not None else 'NULL'
+                hotel_id = f"'{hotel['hotel_id']}'" if hotel['hotel_id'] is not None else 'NULL'
+                latitude = f"{hotel['latitude']}" if hotel['latitude'] is not None else 'NULL'
+                longitude = f"{hotel['longitude']}" if hotel['longitude'] is not None else 'NULL'
+                country_code = f"'{hotel['country_code']}'" if hotel['country_code'] is not None else 'NULL'
+                distance_value = f"{hotel['distance_value']}" if hotel['distance_value'] is not None else 'NULL'
+                distance_unit = f"'{hotel['distance_unit']}'" if hotel['distance_unit'] is not None else 'NULL'
+                last_update = f"'{hotel['last_update']}'" if hotel['last_update'] is not None else 'NULL'
+                is_sponsored = f"{'TRUE' if hotel['is_sponsored'] else 'FALSE'}" if hotel['is_sponsored'] is not None else 'NULL'
+                
+                row = f"({chain_code}, {iata_code}, {dupe_id}, {name}, {hotel_id}, {latitude}, {longitude}, {country_code}, {distance_value}, {distance_unit}, TO_TIMESTAMP_NTZ({last_update}), {is_sponsored})"
+                values.append(row)
+            
+            # Complete the SQL statement with all values
+            insert_stmt += ",\n".join(values)
+            
+            # Execute the batch insert
+            cursor.execute(insert_stmt)
+            total_inserted += len(batch)
+            print(f"Inserted batch of {len(batch)} hotels. Total inserted: {total_inserted}")
+        
+        print(f"Successfully inserted {total_inserted} hotels into Snowflake")
+        
+    except Exception as e:
+        print(f"Error loading hotels to Snowflake: {e}")
+        raise
+    finally:
+        cursor.close()
+        conn.close()
 
 default_args = {
     'owner': 'airflow',
@@ -193,40 +241,10 @@ create_hotels_table = SnowflakeOperator(
     dag=hotelDag
 )
 
-# Create attractions table
-create_attractions_table = SnowflakeOperator(
-    task_id='create_attractions_table',
-    snowflake_conn_id='snowflake_conn',
-    sql="""
-    USE WAREHOUSE COMPUTE_WH;
-    USE DATABASE HOTEL_PROJECT;
-    USE SCHEMA PUBLIC;
-    
-    -- Create the attractions table
-    CREATE TABLE IF NOT EXISTS attractions (
-        attraction_id VARCHAR,
-        name VARCHAR,
-        hotel_id VARCHAR,
-        distance_value FLOAT,
-        distance_unit VARCHAR,
-        attraction_type VARCHAR,
-        load_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """,
-    dag=hotelDag
-)
-
 # Download data from S3
 download_hotel_data = PythonOperator(
     task_id='download_hotel_data',
     python_callable=download_hotel_data,
-    provide_context=True,
-    dag=hotelDag
-)
-
-download_attractions_data = PythonOperator(
-    task_id='download_attractions_data',
-    python_callable=download_attractions_data,
     provide_context=True,
     dag=hotelDag
 )
@@ -239,92 +257,14 @@ process_hotel_json = PythonOperator(
     dag=hotelDag
 )
 
-# Read attractions data
-read_attractions_json = PythonOperator(
-    task_id='read_attractions_json',
-    python_callable=read_attractions_data,
-    provide_context=True,
-    dag=hotelDag
-)
-
-# Load hotel data to Snowflake
-load_hotel_data = SnowflakeOperator(
+# Load hotel data to Snowflake with custom Python function
+load_hotel_data = PythonOperator(
     task_id='load_hotel_data',
-    snowflake_conn_id='snowflake_conn',
-    sql="""
-    USE WAREHOUSE COMPUTE_WH;
-    USE DATABASE HOTEL_PROJECT;
-    USE SCHEMA PUBLIC;
-    
-    -- Transform and load into hotels table
-    INSERT INTO hotels (
-        chain_code,
-        iata_code,
-        dupe_id,
-        name,
-        hotel_id,
-        latitude,
-        longitude,
-        country_code,
-        distance_value,
-        distance_unit,
-        last_update,
-        is_sponsored
-    )
-    WITH json_data AS (
-        SELECT PARSE_JSON('{{ task_instance.xcom_pull(task_ids="process_hotel_json") }}') as json
-    )
-    SELECT DISTINCT
-        f.value:chain_code::VARCHAR as chain_code,
-        f.value:iata_code::VARCHAR as iata_code,
-        f.value:dupe_id::NUMBER as dupe_id,
-        f.value:name::VARCHAR as name,
-        f.value:hotel_id::VARCHAR as hotel_id,
-        f.value:latitude::FLOAT as latitude,
-        f.value:longitude::FLOAT as longitude,
-        f.value:country_code::VARCHAR as country_code,
-        f.value:distance_value::FLOAT as distance_value,
-        f.value:distance_unit::VARCHAR as distance_unit,
-        TO_TIMESTAMP_NTZ(f.value:last_update::VARCHAR) as last_update,
-        f.value:is_sponsored::BOOLEAN as is_sponsored
-    FROM json_data,
-    LATERAL FLATTEN(input => json) f;
-    """,
-    dag=hotelDag
-)
-
-# Load attractions data to Snowflake
-load_attractions_data = SnowflakeOperator(
-    task_id='load_attractions_data',
-    snowflake_conn_id='snowflake_conn',
-    sql="""
-    USE WAREHOUSE COMPUTE_WH;
-    USE DATABASE HOTEL_PROJECT;
-    USE SCHEMA PUBLIC;
-    
-    -- Transform and load into attractions table
-    INSERT INTO attractions (
-        attraction_id,
-        name,
-        hotel_id,
-        distance_value,
-        distance_unit,
-        attraction_type
-    )
-    WITH json_data AS (
-        SELECT PARSE_JSON('{{ task_instance.xcom_pull(task_ids="read_attractions_json") }}') as json
-    )
-    SELECT DISTINCT
-        a.value:id::VARCHAR as attraction_id,
-        a.value:name::VARCHAR as name,
-        a.value:hotel_id::VARCHAR as hotel_id,
-        a.value:distance:value::FLOAT as distance_value,
-        a.value:distance:unit::VARCHAR as distance_unit,
-        a.value:type::VARCHAR as attraction_type
-    FROM json_data,
-    LATERAL FLATTEN(input => json:attractions) a;
-    """,
-    dag=hotelDag
+    python_callable=load_hotels_to_snowflake,
+    provide_context=True,
+    dag=hotelDag,
+    retries=2,  # Add more retries for this task
+    retry_delay=timedelta(minutes=1)  # Shorter retry delay for faster testing
 )
 
 # Add a task to log completion
@@ -336,10 +276,7 @@ completion_log = BashOperator(
 )
 
 # Set task dependencies
-init_database >> [create_hotels_table, create_attractions_table]
-create_hotels_table >> download_hotel_data >> process_hotel_json >> load_hotel_data
-create_attractions_table >> download_attractions_data >> read_attractions_json >> load_attractions_data
-[load_hotel_data, load_attractions_data] >> completion_log
+init_database >> create_hotels_table >> download_hotel_data >> process_hotel_json >> load_hotel_data >> completion_log
 
 # This exposes the DAG
 hotelDag
