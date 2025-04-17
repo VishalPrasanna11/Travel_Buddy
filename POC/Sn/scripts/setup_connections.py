@@ -1,6 +1,32 @@
+import os
+import json
+from airflow.models import Variable
+from airflow.hooks.base import BaseHook
+import logging
 from airflow import settings
 from airflow.models import Connection
-import os
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Set AWS credentials as Airflow variables (for S3 access)
+try:
+    # Only set if they don't already exist
+    if Variable.get("aws_access_key_id", default_var=None) is None:
+        Variable.set("aws_access_key_id", "YOUR_ACCESS_KEY")
+        logger.info("Set AWS access key ID variable")
+    
+    if Variable.get("aws_secret_access_key", default_var=None) is None:
+        Variable.set("aws_secret_access_key", "YOUR_SECRET_KEY")
+        logger.info("Set AWS secret access key variable")
+    
+    if Variable.get("aws_region", default_var=None) is None:
+        Variable.set("aws_region", "us-east-1")
+        logger.info("Set AWS region variable")
+        
+    logger.info("AWS variables setup complete")
+except Exception as e:
+    logger.error(f"Error setting AWS variables: {e}")
 
 # Get environment variables
 snowflake_account = os.getenv('SNOWFLAKE_ACCOUNT')
@@ -44,4 +70,4 @@ else:
     # Add new connection
     session.add(snowflake_conn)
 
-session.commit() 
+session.commit()

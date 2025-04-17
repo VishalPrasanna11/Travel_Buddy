@@ -11,13 +11,37 @@ import pandas as pd
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 import boto3
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 
 # Function to download file from S3
 def download_from_s3(bucket, key, local_path):
+
+    def check_credentials(**context):
+        """Verify environment variables are loaded"""
+        print(f"AWS_ACCESS_KEY_ID exists: {bool(os.environ.get('AWS_ACCESS_KEY_ID'))}")
+        print(f"AWS_SECRET_ACCESS_KEY exists: {bool(os.environ.get('AWS_SECRET_ACCESS_KEY'))}")
+        
+        # First few characters of each (don't print full credentials)
+        if os.environ.get('AWS_ACCESS_KEY_ID'):
+            print(f"AWS_ACCESS_KEY_ID starts with: {os.environ.get('AWS_ACCESS_KEY_ID')[:4]}...")
+        if os.environ.get('AWS_SECRET_ACCESS_KEY'):
+            print(f"AWS_SECRET_ACCESS_KEY starts with: {os.environ.get('AWS_SECRET_ACCESS_KEY')[:4]}...")
+        
+        return True
     """
     Download a file from S3 to a local path
     """
-    s3_client = boto3.client('s3')
+    x=check_credentials()
+    session = boto3.Session(
+        aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+        region_name='us-east-2'  # match your bucket region
+    )
+    s3_client = session.client('s3')  # Add the correct region
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
     s3_client.download_file(bucket, key, local_path)
     return local_path
