@@ -73,6 +73,10 @@ def root_agent_node(state: TravelAgentState) -> TravelAgentState:
         response_text = "planning"
     elif re.search(r"(hotel|stay|room|accommodation|book.*hotel|lodge)", user_input):
         response_text = "planning"
+    elif re.search(r"(restaurant|food|eat|dining|cuisine|attraction|visit|tour|sightseeing|landmark|discover|explore)", user_input):
+        response_text = "planning"
+    elif re.search(r"(itinerary|schedule|plan|trip|travel)", user_input):
+        response_text = "planning"
     elif re.search(r"(pack|luggage|essentials|carry|prepare|things to bring)", user_input):
         response_text = "pre_travel"
     else:
@@ -87,7 +91,6 @@ def root_agent_node(state: TravelAgentState) -> TravelAgentState:
         Based on the user's request, determine which specialized agent should handle it.
 
         Available agents:
-        - explore: For exploring travel destinations, activities, and attractions
         - in_travel: For assistance during travel
         - planning: For planning itineraries and schedules
         - post_travel: For post-trip activities

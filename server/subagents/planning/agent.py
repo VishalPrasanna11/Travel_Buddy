@@ -11,6 +11,7 @@ from miniagents.Flight.agent import flight_search_agent, format_flight_results
 from miniagents.Hotels.agent import hotel_search_agent, format_hotel_results
 from miniagents.Restaurants.agent import restaurant_search_agent, format_restaurant_results
 from miniagents.Attractions.agent import attractions_search_agent, format_attractions_results
+from miniagents.Itinerary.agent import itinerary_agent, format_itinerary_results
 
 # Set up logging
 logging.basicConfig(
@@ -186,7 +187,9 @@ tool_funcs = {
     "flight_search_agent": flight_search_agent,
     "hotel_search_agent": hotel_search_agent,
     "restaurant_search_agent": restaurant_search_agent,
-    "attractions_search_agent": attractions_search_agent
+    "attractions_search_agent": attractions_search_agent,
+    "itinerary_agent": itinerary_agent
+    
 }
 
 # ------------------ Agent Node ------------------ #
