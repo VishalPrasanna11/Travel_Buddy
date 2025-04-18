@@ -565,6 +565,7 @@ class PlanningAgent:
 
     async def ainvoke(self, inputs: Dict[str, str]) -> Dict[str, str]:
         """Asynchronous invocation of the agent"""
+        logger.info(f"🔍 ainvoke called with inputs: {inputs}")
         user_input = inputs.get("input", "")
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
@@ -572,7 +573,6 @@ class PlanningAgent:
             "tool_names": [],
             "last_tool_call_ids": []
         }
-        final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})
         
         # Initialize response with default structure and status
         response = {
@@ -581,113 +581,79 @@ class PlanningAgent:
             "status": "success"
         }
         
-        # Process the final state to extract the response
-        for msg in reversed(final_state["messages"]):
-            if isinstance(msg, ToolMessage):
-                try:
-                    parsed = json.loads(msg.content)
-                    
-                    # Check for error cases first
-                    if "error" in parsed:
-                        error_message = parsed["error"]
-                        logger.warning(f"⚠️ Found error in tool message: {error_message}")
-                        
-                        # Set error status and message
-                        response["status"] = "error"
-                        response["error_message"] = error_message
-                        
-                        # Use formatted_text if available, otherwise use default error message
-                        response["output"] = parsed.get("formatted_text", f"❌ Error: {error_message}")
-                        
-                        # Handle api_data for errors
-                        if "api_data" in parsed and isinstance(parsed["api_data"], dict):
-                            response["api_data"] = parsed["api_data"]
-                        else:
-                            response["api_data"] = {
-                                "error": error_message,
-                                "status": "error"
-                            }
-                        
-                        return response
-                    
-                    # Handle success cases with structured formatting
-                    
-                    # Initialize output field if not already present
-                    if not response["output"] or response["output"] == "Let me help you plan your trip.":
-                        if "formatted_text" in parsed:
-                            response["output"] = parsed["formatted_text"]
-                    
-                    # Format based on which tool was called and preserve API data
-                    if "hotels" in parsed:
-                        response["output"] = format_hotel_results(parsed)
-                        response["api_data"]["hotels"] = parsed.get("hotels", {})
-                    elif "flight" in parsed:
-                        response["output"] = format_flight_results(parsed)
-                        
-                        # Handle flight data properly based on structure
-                        if "flight" in parsed:
-                            response["api_data"]["flights"] = parsed.get("flight", {})
-                            
-                        # Also check for api_data if present (from our updated flight_search_agent)
-                        if "api_data" in parsed and isinstance(parsed["api_data"], dict):
-                            # Merge api_data into response api_data
-                            for key, value in parsed["api_data"].items():
-                                response["api_data"][key] = value
-                                
-                            # Special case for flight data in api_data
-                            if "flight" in parsed["api_data"]:
-                                response["api_data"]["flights"] = parsed["api_data"]["flight"]
-                    elif "restaurants" in parsed:
-                        response["output"] = format_restaurant_results(parsed)
-                        response["api_data"]["restaurants"] = parsed.get("restaurants", {})
-                    elif "attractions" in parsed:
-                        response["output"] = format_attractions_results(parsed)
-                        response["api_data"]["attractions"] = parsed.get("attractions", {})
-                    else:
-                        # For generic or unknown tool responses
-                        if "output" in parsed:
-                            response["output"] = parsed["output"]
-                        elif "formatted_text" in parsed:
-                            response["output"] = parsed["formatted_text"]
-                        else:
-                            response["output"] = f"✅ Results: {json.dumps(parsed)}"
-                        
-                        # Try to intelligently extract API data based on common patterns
-                        for key in ["flight", "hotel", "restaurant", "attraction"]:
-                            if key in parsed:
-                                plural_key = f"{key}s" if not key.endswith("s") else key
-                                response["api_data"][plural_key] = parsed[key]
-                        
-                        # Directly copy api_data if present
-                        if "api_data" in parsed and isinstance(parsed["api_data"], dict):
-                            for key, value in parsed["api_data"].items():
-                                response["api_data"][key] = value
-                    
-                    # Copy status if present
-                    if "status" in parsed:
-                        response["status"] = parsed["status"]
-                    
-                    return response
-                except Exception as e:
-                    logger.error(f"❌ Error parsing tool message: {str(e)}")
-                    logger.error(traceback.format_exc())
-                    
-                    return {
-                        "output": "⚠️ Received unparseable response data.",
-                        "error_message": str(e),
-                        "status": "error",
-                        "api_data": {
-                            "error": str(e),
-                            "status": "error"
-                        }
-                    }
+        try:
+            # Invoke the graph with the initial state
+            final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})
             
-            # Handle AI messages (regular responses without tool calls)
-            if isinstance(msg, AIMessage):
-                response["output"] = msg.content
-                return response
-        
-        # Return default response if no relevant messages found
-        return response
-# ✅ Instantiate
+            # Debug the structure of messages
+            logger.info(f"🔍 Number of messages in final state: {len(final_state['messages'])}")
+            
+            # Process the messages in reverse order (most recent first)
+            for i, msg in enumerate(reversed(final_state["messages"])):
+                logger.info(f"🔍 Processing message {i}, type: {type(msg).__name__}")
+                
+                # Check if it's a tool message
+                if isinstance(msg, ToolMessage):
+                    logger.info(f"🔧 Found tool message: {str(msg.content)[:200]}...")
+                    
+                    try:
+                        # Parse the JSON content of the tool message
+                        parsed_content = json.loads(msg.content)
+                        logger.info(f"🔧 Tool message keys: {parsed_content.keys()}")
+                        
+                        # Check if api_data is present
+                        if "api_data" in parsed_content:
+                            logger.info(f"🔍 Found api_data in tool message with keys: {parsed_content['api_data'].keys()}")
+                            response["api_data"] = parsed_content["api_data"]
+                            logger.info(f"🔍 Set api_data in response")
+                        
+                        # Also check for restaurants directly at the top level
+                        if "restaurants" in parsed_content:
+                            logger.info(f"🔍 Found restaurants at top level of tool message")
+                            if "restaurants" not in response["api_data"]:
+                                response["api_data"]["restaurants"] = parsed_content["restaurants"]
+                                logger.info(f"🔍 Added top-level restaurants to api_data")
+                        
+                        # Set formatted text as output if available
+                        if "formatted_text" in parsed_content:
+                            response["output"] = parsed_content["formatted_text"]
+                            logger.info(f"🔍 Set formatted_text as output")
+                        
+                        # Stop processing after finding and handling a tool message
+                        # This ensures we're using the most recent tool response
+                        logger.info(f"✅ Finished processing tool message")
+                        break
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Error parsing tool message: {str(e)}")
+                        response["status"] = "error"
+                        response["output"] = f"Error processing response: {str(e)}"
+                
+                # Check if it's an AI message (fallback if no tool message is found)
+                elif isinstance(msg, AIMessage) and response["output"] == "Let me help you plan your trip.":
+                    response["output"] = msg.content
+                    logger.info(f"🔍 Set AI message as output")
+            
+            # Final check to ensure we have restaurant data
+            if "api_data" in response and not response["api_data"] and "restaurants" in response:
+                response["api_data"]["restaurants"] = response["restaurants"]
+                logger.info(f"🔍 Final check: copied top-level restaurants to api_data")
+            
+            # Print the final response structure
+            logger.info(f"✅ Final response structure: {json.dumps(response, default=str)[:500]}...")
+            print(f"DEBUG FINAL RESPONSE: {json.dumps(response, default=str)}")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ Error in ainvoke: {str(e)}")
+            return {
+                "output": f"An error occurred: {str(e)}",
+                "error": str(e),
+                "status": "error",
+                "api_data": {
+                    "error": str(e),
+                    "status": "error"
+                }
+            }# ✅ Instantiate
 agent = PlanningAgent()

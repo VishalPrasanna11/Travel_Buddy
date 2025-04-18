@@ -169,6 +169,7 @@ class LLMController:
                     raise HTTPException(status_code=500, detail=f"Invalid sub-agent detected: {sa}")
             
             agent_response = await root_agent.ainvoke({"input": agent_input})
+            logger.info(f"Agent response: {agent_response}")
             answer = agent_response.get("output", "I couldn't process your request at this time.")
             
             # Build the final response with API data if available
