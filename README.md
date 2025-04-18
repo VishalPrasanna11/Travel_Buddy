@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.68.0+-00a393.svg)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-13.0+-black.svg)](https://nextjs.org/)
+[![React.js](https://img.shields.io/badge/-ReactJs-61DAFB?logo=react&logoColor=white&style=for-the-badge)
 [![Docker](https://img.shields.io/badge/Docker-20.10.8+-blue.svg)](https://www.docker.com/)
 [![LLM Agents](https://img.shields.io/badge/Agents-CrewAI%20%2B%20LLMs-purple.svg)](https://github.com/joaomdmoura/crewAI)
 [![Vector DB](https://img.shields.io/badge/Vector%20Search-Pinecone-009adf.svg)](https://www.pinecone.io/)
