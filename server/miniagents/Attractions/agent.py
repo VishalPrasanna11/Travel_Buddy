@@ -74,10 +74,9 @@ def search_attractions(params: Dict[str, Any]) -> Dict[str, Any]:
 def attractions_search_agent(*, input_str: str) -> Dict[str, Any]:
     """
     Main attractions search agent function that takes either natural language
-    or structured input and returns attractions search results
+    or structured input and returns attractions search results and API data
     """
     try:
-        print("🔧 attractions_search_agent CALLED with:", input_str)
         logger.info(f"🔍 Received input_str: {input_str}")
 
         # Parse the input string (either directly or preprocess with LLM in the other file)
@@ -85,24 +84,57 @@ def attractions_search_agent(*, input_str: str) -> Dict[str, Any]:
             # Already in structured format (may or may not include attraction_type)
             params = dict(param.split("=", 1) for param in input_str.split("&") if "=" in param)
             logger.info(f"🔧 Params parsed: {params}")
-            return search_attractions(params)
+            result = search_attractions(params)
         else:
             # For natural language input, we need to call the LLM parser
             # This will be handled in the parent file that imports this module
-            return {"error": "Natural language parsing should be handled by the parent module"}
+            error_result = {
+                "error": "Natural language parsing should be handled by the parent module",
+                "formatted_text": "❌ Error: Natural language input requires preprocessing.",
+                "status": "error", 
+                "api_data": {
+                    "error": "Natural language parsing should be handled by the parent module",
+                    "status": "error"
+                }
+            }
+            return error_result
+        
+        # Format the results for human-readable output
+        formatted_text = format_attractions_results(result)
+        
+        # Create a structured response with both formatted text and raw data
+        complete_result = {
+            "formatted_text": formatted_text,
+            "attractions": result.get("attractions", {}),
+            "api_data": result,
+            "status": "error" if "error" in result else "success"
+        }
+        
+        return complete_result
 
     except Exception as e:
         logger.error(f"❌ Attraction Search Agent Exception: {e}")
         logger.error(traceback.format_exc())
-        return {"error": f"Internal error: {str(e)}"}
-
+        
+        error_result = {
+            "error": f"Internal error: {str(e)}",
+            "formatted_text": f"❌ Attraction search error: Internal error occurred.",
+            "status": "error",
+            "api_data": {
+                "error": f"Internal error: {str(e)}",
+                "status": "error"
+            }
+        }
+        return error_result
 # ------------------ Formatting ------------------ #
 def format_attractions_results(attractions_data: Dict[str, Any]) -> str:
     """Format attractions search results into a readable string"""
-    if "error" in attractions_data:
+    # Handle error case first
+    if isinstance(attractions_data, dict) and "error" in attractions_data:
         return f"❌ Attraction search error: {attractions_data['error']}"
     
-    if "attractions" not in attractions_data:
+    # Handle missing data
+    if not isinstance(attractions_data, dict) or "attractions" not in attractions_data:
         return "⚠️ No attraction data received."
     
     attractions_list = attractions_data["attractions"]["attractions_list"]
@@ -121,14 +153,22 @@ def format_attractions_results(attractions_data: Dict[str, Any]) -> str:
         name = attraction.get("name", "Unknown Attraction")
         address = attraction.get("address", "Unknown Location")
         rating = attraction.get("rating", "N/A")
+        total_ratings = attraction.get("total_ratings", "N/A")
         
         msg += f"**{i}. {name}**\n"
         msg += f"📍 Address: {address}\n"
-        msg += f"⭐ Rating: {rating}/5\n"
+        msg += f"⭐ Rating: {rating}/5"
+        if total_ratings != "N/A":
+            msg += f" ({total_ratings} reviews)"
+        msg += "\n"
         
         # Add photo if available
         if photo_url := attraction.get("photo_url"):
             msg += f"📸 [View Photo]({photo_url})\n"
+        
+        # Add types/categories if available
+        if "types" in attraction and attraction["types"]:
+            msg += f"🏷️ Types: {', '.join(attraction['types'][:3])}\n"
         
         msg += "\n"
     

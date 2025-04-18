@@ -11,8 +11,7 @@ from miniagents.Flight.agent import flight_search_agent, format_flight_results
 from miniagents.Hotels.agent import hotel_search_agent, format_hotel_results
 from miniagents.Restaurants.agent import restaurant_search_agent, format_restaurant_results
 from miniagents.Attractions.agent import attractions_search_agent, format_attractions_results
-from miniagents.Itinerary.agent import itinerary_agent, format_itinerary_results
-
+from miniagents.Itinerary.agent import itinerary_agent
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -393,17 +392,78 @@ def execute_tool(tool_func, state: PlanningAgentState, tool_key: str) -> Plannin
                     # Unknown tool
                     result = {"error": f"Unknown tool: {tool_key}"}
                 
-                logger.info(f"✅ Tool returned: {result}")
-                state["messages"].append(
-                    ToolMessage(tool_call_id=call["id"], content=json.dumps(result))
-                )
+                # Check for and handle errors properly
+                if isinstance(result, dict) and "error" in result:
+                    error_message = result["error"]
+                    logger.warning(f"⚠️ Tool returned an error: {error_message}")
+                    
+                    # Ensure consistent structure for error responses
+                    standardized_error = {
+                        "error": error_message,
+                        "formatted_text": result.get("formatted_text", f"Error: {error_message}"),
+                        "status": "error"
+                    }
+                    
+                    # Ensure api_data is present and properly structured
+                    if "api_data" not in result:
+                        standardized_error["api_data"] = {
+                            "error": error_message,
+                            "status": "error"
+                        }
+                    else:
+                        standardized_error["api_data"] = result["api_data"]
+                        # Ensure error info exists in api_data
+                        if "error" not in standardized_error["api_data"]:
+                            standardized_error["api_data"]["error"] = error_message
+                            standardized_error["api_data"]["status"] = "error"
+                    
+                    logger.info(f"🚨 Sending standardized error response: {standardized_error}")
+                    state["messages"].append(
+                        ToolMessage(tool_call_id=call["id"], content=json.dumps(standardized_error))
+                    )
+                else:
+                    # Handle successful responses
+                    logger.info(f"✅ Tool returned: {result}")
+                    
+                    # Ensure all successful responses have a consistent structure
+                    if isinstance(result, dict):
+                        # Add status field if not present
+                        if "status" not in result:
+                            result["status"] = "success"
+                        
+                        # Ensure api_data exists for data flow
+                        if "api_data" not in result and any(k in result for k in ["flight", "flights", "hotels", "restaurants", "attractions"]):
+                            result["api_data"] = {}
+                            # Copy data to api_data for consistent structure
+                            for data_key in ["flight", "flights", "hotels", "restaurants", "attractions"]:
+                                if data_key in result:
+                                    result["api_data"][data_key] = result[data_key]
+                    
+                    state["messages"].append(
+                        ToolMessage(tool_call_id=call["id"], content=json.dumps(result))
+                    )
+                    
             except Exception as e:
                 logger.error(f"❌ Tool execution error: {str(e)}")
+                logger.error(traceback.format_exc())
+                
+                error_message = f"Tool execution error: {str(e)}"
+                error_response = {
+                    "error": error_message,
+                    "formatted_text": f"❌ {error_message}",
+                    "status": "error",
+                    "api_data": {
+                        "error": error_message,
+                        "status": "error",
+                        "tool": tool_key
+                    }
+                }
+                
                 state["messages"].append(
-                    ToolMessage(tool_call_id=call["id"], content=json.dumps({"error": str(e)}))
+                    ToolMessage(tool_call_id=call["id"], content=json.dumps(error_response))
                 )
+    
     return state
-
 # ------------------ Graph Flow Control ------------------ #
 def should_continue(state: PlanningAgentState) -> str:
     """Determine the next step based on tool calls"""
@@ -505,6 +565,7 @@ class PlanningAgent:
 
     async def ainvoke(self, inputs: Dict[str, str]) -> Dict[str, str]:
         """Asynchronous invocation of the agent"""
+        logger.info(f"🔍 ainvoke called with inputs: {inputs}")
         user_input = inputs.get("input", "")
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
@@ -512,29 +573,87 @@ class PlanningAgent:
             "tool_names": [],
             "last_tool_call_ids": []
         }
-        final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})
         
-        # Process the final state to extract the response
-        for msg in reversed(final_state["messages"]):
-            if isinstance(msg, ToolMessage):
-                try:
-                    parsed = json.loads(msg.content)
-                    # Format based on which tool was called
-                    if "hotels" in parsed:
-                        return {"output": format_hotel_results(parsed)}
-                    elif "flight" in parsed:
-                        return {"output": format_flight_results(parsed)}
-                    elif "restaurants" in parsed:
-                        return {"output": format_restaurant_results(parsed)}
-                    elif "attractions" in parsed:
-                        return {"output": format_attractions_results(parsed)}
-                    else:
-                        return {"output": f"✅ Results: {parsed}"}
-                except:
-                    return {"output": "⚠️ Received unparseable response data."}
-            if isinstance(msg, AIMessage):
-                return {"output": msg.content}
-        return {"output": "Let me help you plan your trip."}
-
-# ✅ Instantiate
+        # Initialize response with default structure and status
+        response = {
+            "output": "Let me help you plan your trip.",
+            "api_data": {},
+            "status": "success"
+        }
+        
+        try:
+            # Invoke the graph with the initial state
+            final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})
+            
+            # Debug the structure of messages
+            logger.info(f"🔍 Number of messages in final state: {len(final_state['messages'])}")
+            
+            # Process the messages in reverse order (most recent first)
+            for i, msg in enumerate(reversed(final_state["messages"])):
+                logger.info(f"🔍 Processing message {i}, type: {type(msg).__name__}")
+                
+                # Check if it's a tool message
+                if isinstance(msg, ToolMessage):
+                    logger.info(f"🔧 Found tool message: {str(msg.content)[:200]}...")
+                    
+                    try:
+                        # Parse the JSON content of the tool message
+                        parsed_content = json.loads(msg.content)
+                        logger.info(f"🔧 Tool message keys: {parsed_content.keys()}")
+                        
+                        # Check if api_data is present
+                        if "api_data" in parsed_content:
+                            logger.info(f"🔍 Found api_data in tool message with keys: {parsed_content['api_data'].keys()}")
+                            response["api_data"] = parsed_content["api_data"]
+                            logger.info(f"🔍 Set api_data in response")
+                        
+                        # Also check for restaurants directly at the top level
+                        if "restaurants" in parsed_content:
+                            logger.info(f"🔍 Found restaurants at top level of tool message")
+                            if "restaurants" not in response["api_data"]:
+                                response["api_data"]["restaurants"] = parsed_content["restaurants"]
+                                logger.info(f"🔍 Added top-level restaurants to api_data")
+                        
+                        # Set formatted text as output if available
+                        if "formatted_text" in parsed_content:
+                            response["output"] = parsed_content["formatted_text"]
+                            logger.info(f"🔍 Set formatted_text as output")
+                        
+                        # Stop processing after finding and handling a tool message
+                        # This ensures we're using the most recent tool response
+                        logger.info(f"✅ Finished processing tool message")
+                        break
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Error parsing tool message: {str(e)}")
+                        response["status"] = "error"
+                        response["output"] = f"Error processing response: {str(e)}"
+                
+                # Check if it's an AI message (fallback if no tool message is found)
+                elif isinstance(msg, AIMessage) and response["output"] == "Let me help you plan your trip.":
+                    response["output"] = msg.content
+                    logger.info(f"🔍 Set AI message as output")
+            
+            # Final check to ensure we have restaurant data
+            if "api_data" in response and not response["api_data"] and "restaurants" in response:
+                response["api_data"]["restaurants"] = response["restaurants"]
+                logger.info(f"🔍 Final check: copied top-level restaurants to api_data")
+            
+            # Print the final response structure
+            logger.info(f"✅ Final response structure: {json.dumps(response, default=str)[:500]}...")
+            print(f"DEBUG FINAL RESPONSE: {json.dumps(response, default=str)}")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ Error in ainvoke: {str(e)}")
+            return {
+                "output": f"An error occurred: {str(e)}",
+                "error": str(e),
+                "status": "error",
+                "api_data": {
+                    "error": str(e),
+                    "status": "error"
+                }
+            }# ✅ Instantiate
 agent = PlanningAgent()

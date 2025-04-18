@@ -24,7 +24,7 @@ RESTAURANT_CACHE = {}
 def restaurant_search_agent(*, input_str: str) -> Dict[str, Any]:
     """
     Main restaurant search agent function that takes either natural language
-    or structured input and returns restaurant search results
+    or structured input and returns restaurant search results and API data
     """
     try:
         logger.info(f"🔍 Received input_str: {input_str}")
@@ -32,7 +32,13 @@ def restaurant_search_agent(*, input_str: str) -> Dict[str, Any]:
         # Check if it's already in cache
         if input_str in RESTAURANT_CACHE:
             logger.info(f"🔍 Results for {input_str} found in cache")
-            return RESTAURANT_CACHE[input_str]
+            cache_result = RESTAURANT_CACHE[input_str]
+            
+            # Ensure cached result includes formatted_text
+            if "formatted_text" not in cache_result:
+                cache_result["formatted_text"] = format_restaurant_results(cache_result)
+                
+            return cache_result
 
         # Parse the input string to extract location
         if "location=" in input_str:
@@ -48,49 +54,133 @@ def restaurant_search_agent(*, input_str: str) -> Dict[str, Any]:
                 structured_input = f"location={location}"
                 result = search_restaurants(structured_input)
             else:
-                return {"error": "Could not determine location from input. Please specify a location."}
+                error_result = {
+                    "error": "Could not determine location from input. Please specify a location.",
+                    "formatted_text": "❌ Could not determine location from input. Please specify a location.",
+                    "status": "error",
+                    "api_data": {
+                        "error": "Could not determine location from input. Please specify a location.",
+                        "status": "error"
+                    }
+                }
+                return error_result
+        
+        # Format the results for human-readable output
+        formatted_text = format_restaurant_results(result)
+        
+        # Create a structured response with both formatted text and raw data
+        complete_result = {
+            "formatted_text": formatted_text,
+            "restaurants": result.get("restaurants", {}),
+            "api_data": result,
+            "status": "error" if "error" in result else "success"
+        }
         
         # Cache the result
-        RESTAURANT_CACHE[input_str] = result
-        
-        return result
+        RESTAURANT_CACHE[input_str] = complete_result
+        logger.info(f"🔍 from Reestarauatent agent before {complete_result}")
+        return complete_result
 
     except Exception as e:
         logger.error(f"❌ Restaurant Search Agent Exception: {e}")
         logger.error(traceback.format_exc())
-        return {"error": f"Internal error: {str(e)}"}
-
+        
+        error_result = {
+            "error": f"Internal error: {str(e)}",
+            "formatted_text": f"❌ Restaurant search error: Internal error occurred.",
+            "status": "error",
+            "api_data": {
+                "error": f"Internal error: {str(e)}",
+                "status": "error"
+            }
+        }
+        return error_result
 # ------------------ Formatting ------------------ #
 def format_restaurant_results(restaurant_data: Dict[str, Any]) -> str:
     """Format restaurant search results into a readable string"""
-    if "error" in restaurant_data:
-        return f"❌ Restaurant search error: {restaurant_data['error']}"
-    
-    if "restaurants" not in restaurant_data:
-        return "⚠️ No restaurant data received."
-    
-    restaurants = restaurant_data["restaurants"]
-    location = restaurants.get("location", "Unknown Location")
-    restaurant_list = restaurants.get("restaurants", [])
-    
-    if not restaurant_list:
-        return f"⚠️ No restaurants found in {location}."
-    
-    msg = f"Here are recommended restaurants in {location}:\n\n"
-    
-    for i, restaurant in enumerate(restaurant_list[:5], 1):
-        name = restaurant.get("name", "Unknown Restaurant")
-        address = restaurant.get("address", "Unknown Location")
-        rating = restaurant.get("rating", "Not rated")
-        total_ratings = restaurant.get("total_ratings", 0)
+    try:
+        # Check for error case
+        if "error" in restaurant_data:
+            return f"❌ Restaurant search error: {restaurant_data['error']}"
         
-        msg += f"### {i}. {name}\n"
-        msg += f"- Address: {address}\n"
-        msg += f"- Rating: {rating}/5 ({total_ratings} reviews)\n"
+        # Check for restaurants data
+        if "restaurants" not in restaurant_data:
+            return "⚠️ No restaurant data received."
         
-        if "types" in restaurant and restaurant["types"]:
-            msg += f"- Types: {', '.join(restaurant['types'][:3])}\n"
+        restaurants = restaurant_data["restaurants"]
         
-        msg += "\n"
-    
-    return msg
+        # Handle case where restaurants is a list rather than dictionary
+        if isinstance(restaurants, list):
+            if not restaurants:
+                return "No restaurants found matching your criteria."
+            
+            location = restaurant_data.get("location", "Unknown Location")
+            msg = f"Here are some recommended restaurants in {location}:\n\n"
+            
+            for i, restaurant in enumerate(restaurants[:5], 1):
+                name = restaurant.get("name", "Unnamed Restaurant")
+                rating = restaurant.get("rating", "N/A")
+                price_level = restaurant.get("price_level", "")
+                price_display = "$" * price_level if isinstance(price_level, int) else price_level
+                address = restaurant.get("formatted_address", "Address unavailable")
+                
+                msg += f"### Restaurant {i}: {name}\n"
+                msg += f"Rating: {rating}/5\n"
+                msg += f"Price: {price_display}\n"
+                msg += f"Address: {address}\n"
+                
+                # Add cuisine types if available
+                if "types" in restaurant:
+                    cuisine_types = [t for t in restaurant["types"] if t not in ["restaurant", "food", "establishment", "point_of_interest"]]
+                    if cuisine_types:
+                        msg += f"Cuisine: {', '.join(cuisine_types)}\n"
+                
+                # Add open status if available
+                if "open_now" in restaurant:
+                    open_status = "Open now" if restaurant["open_now"] else "Closed"
+                    msg += f"Status: {open_status}\n"
+                
+                msg += "\n"
+            
+            return msg
+        
+        # Original implementation expecting a dictionary
+        else:
+            location = restaurants.get("location", "Unknown Location")
+            results = restaurants.get("results", [])
+            
+            if not results:
+                return "No restaurants found matching your criteria."
+            
+            msg = f"Here are some recommended restaurants in {location}:\n\n"
+            
+            for i, restaurant in enumerate(results[:5], 1):
+                name = restaurant.get("name", "Unnamed Restaurant")
+                rating = restaurant.get("rating", "N/A")
+                price_level = restaurant.get("price_level", "")
+                price_display = "$" * price_level if isinstance(price_level, int) else price_level
+                address = restaurant.get("formatted_address", "Address unavailable")
+                
+                msg += f"### Restaurant {i}: {name}\n"
+                msg += f"Rating: {rating}/5\n"
+                msg += f"Price: {price_display}\n"
+                msg += f"Address: {address}\n"
+                
+                # Add cuisine types if available
+                if "types" in restaurant:
+                    cuisine_types = [t for t in restaurant["types"] if t not in ["restaurant", "food", "establishment", "point_of_interest"]]
+                    if cuisine_types:
+                        msg += f"Cuisine: {', '.join(cuisine_types)}\n"
+                
+                # Add open status if available
+                if "opening_hours" in restaurant and "open_now" in restaurant["opening_hours"]:
+                    open_status = "Open now" if restaurant["opening_hours"]["open_now"] else "Closed"
+                    msg += f"Status: {open_status}\n"
+                
+                msg += "\n"
+            
+            return msg
+        
+    except Exception as e:
+        logger.error(f"Error formatting restaurant results: {str(e)}")
+        return f"❌ Restaurant search error: Internal error occurred."

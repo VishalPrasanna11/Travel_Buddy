@@ -1,10 +1,12 @@
-import { ChangeEvent, ReactNode, useRef, useEffect } from 'react';
+import { ChangeEvent, ReactNode, useRef, useEffect, useState } from 'react';
 import { type Message } from '@/components/ui/chat-message';
 import { ChatContainer } from '@/components/ui/chat';
 import { ChatForm } from '@/components/ui/chat';
 import { MessageInput } from '@/components/ui/message-input';
 import { ThumbsUp, ThumbsDown, MapPin } from 'lucide-react';
+import { useLocation, Location } from './LocationContext';
 
+// Define props including the location detection callback
 type ChatComponentProps = {
   messages: Message[];
   input: string;
@@ -13,6 +15,7 @@ type ChatComponentProps = {
   isEmpty: boolean;
   onInputChange: (e: ChangeEvent<HTMLTextAreaElement>) => void;
   onSubmit: (event?: { preventDefault?: () => void }) => void;
+  onLocationDetected?: (locations: Location[]) => void;
   children?: ReactNode;
 };
 
@@ -24,10 +27,12 @@ export default function ChatComponent({
   isEmpty,
   onInputChange,
   onSubmit,
+  onLocationDetected,
   children
 }: ChatComponentProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const processedMessagesRef = useRef<Set<string>>(new Set());
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,6 +41,146 @@ export default function ChatComponent({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Process messages for location data
+  useEffect(() => {
+    if (messages.length > 0 && onLocationDetected) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === 'assistant' && !processedMessagesRef.current.has(lastMessage.id)) {
+        // Mark this message as processed to prevent reprocessing
+        processedMessagesRef.current.add(lastMessage.id);
+        processResponseForLocations(lastMessage.content);
+      }
+    }
+  }, [messages, onLocationDetected]);
+
+  // Extract location data from responses
+  const processResponseForLocations = (content: string) => {
+    if (!content || !onLocationDetected) return;
+    
+    try {
+      // First try to find JSON data in the response
+      const jsonMatches = content.match(/({[\s\S]*})/);
+      
+      if (jsonMatches && jsonMatches[0]) {
+        try {
+          const jsonStr = jsonMatches[0];
+          const data = JSON.parse(jsonStr);
+          const locations: Location[] = [];
+          
+          // Process attractions (from London format)
+          if (data.attractions && Array.isArray(data.attractions)) {
+            data.attractions.forEach((attraction: any) => {
+              if (attraction.location?.lat && attraction.location?.lng) {
+                locations.push({
+                  name: attraction.name,
+                  lat: attraction.location.lat,
+                  lng: attraction.location.lng,
+                  // address: attraction.address,
+                  // rating: attraction.rating,
+                  // photo_url: attraction.photo_url,
+                  // total_ratings: attraction.total_ratings,
+                  // types: attraction.types,
+                  type: 'primary' // Set attractions as primary pins
+                });
+              }
+            });
+          }
+          
+          // Process attractions_list (from Boston format)
+          if (data.attractions_list?.attractions && Array.isArray(data.attractions_list.attractions)) {
+            data.attractions_list.attractions.forEach((attraction: any) => {
+              if (attraction.location?.lat && attraction.location?.lng) {
+                locations.push({
+                  name: attraction.name,
+                  lat: attraction.location.lat,
+                  lng: attraction.location.lng,
+                  // address: attraction.address,
+                  // rating: attraction.rating,
+                  // photo_url: attraction.photo_url,
+                  // total_ratings: attraction.total_ratings,
+                  // types: attraction.types,
+                  type: 'primary'
+                });
+              }
+            });
+          }
+          
+          // Process hotels
+          if (data.hotels?.data && Array.isArray(data.hotels.data)) {
+            data.hotels.data.forEach((hotelOffer: any) => {
+              if (hotelOffer.hotel?.location?.lat && hotelOffer.hotel?.location?.lng) {
+                locations.push({
+                  name: hotelOffer.hotel.name,
+                  lat: hotelOffer.hotel.location.lat,
+                  lng: hotelOffer.hotel.location.lng,
+                  // address: hotelOffer.hotel.cityCode || "",
+                  type: 'secondary', // Set hotels as secondary pins
+                  relevanceScore: 90
+                });
+              }
+            });
+          }
+          
+          // Process restaurants
+          if (data.restaurants && Array.isArray(data.restaurants)) {
+            data.restaurants.forEach((restaurant: any) => {
+              if (restaurant.location?.lat && restaurant.location?.lng) {
+                locations.push({
+                  name: restaurant.name,
+                  lat: restaurant.location.lat,
+                  lng: restaurant.location.lng,
+                  // address: restaurant.address,
+                  // rating: restaurant.rating,
+                  // photo_url: restaurant.photo_url,
+                  // total_ratings: restaurant.total_ratings,
+                  // types: restaurant.types,
+                  type: 'reference' // Set restaurants as reference pins
+                });
+              }
+            });
+          }
+          
+          if (locations.length > 0) {
+            console.log("Found locations in JSON:", locations);
+            onLocationDetected(locations);
+            return;
+          }
+        } catch (err) {
+          console.error("Error parsing JSON:", err);
+        }
+      }
+      
+      // Fallback: try to extract coordinates from markdown text
+      const locationRegex = /📍.*?(\-?\d+\.\d+),\s*(\-?\d+\.\d+)/g;
+      const locations: Location[] = [];
+      let match;
+      
+      while ((match = locationRegex.exec(content)) !== null) {
+        const lat = parseFloat(match[1]);
+        const lng = parseFloat(match[2]);
+        
+        if (!isNaN(lat) && !isNaN(lng)) {
+          const nameMatch = content.match(/(\w+.*?)\s*📍/);
+          const name = nameMatch ? nameMatch[1].trim() : "Location";
+          
+          locations.push({
+            name,
+            lat,
+            lng,
+            type: 'primary'
+          });
+        }
+      }
+      
+      if (locations.length > 0) {
+        console.log("Found locations in text:", locations);
+        onLocationDetected(locations);
+      }
+    } catch (err) {
+      console.error("Error processing response for locations:", err);
+    }
+  };
 
   const stop = () => {
     // Since your API doesn't support streaming, this is a no-op
@@ -181,4 +326,3 @@ function convertMarkdownToHTML(markdown: string): string {
   
   return markdown;
 }
-
