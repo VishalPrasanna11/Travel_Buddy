@@ -113,77 +113,6 @@ const FlightSearchPage: React.FC = () => {
     setReturnFlights([]);
 
     try {
-      // Mock flight data for testing since the backend is returning 500 errors
-      setTimeout(() => {
-        const mockFlights = [
-          {
-            flight_id: "FL123",
-            price_raw: 450,
-            price_formatted: "$450",
-            origin_id: origin,
-            destination_id: destination,
-            departure_time: departureDate ? departureDate.toISOString() : new Date().toISOString(),
-            arrival_time: departureDate ? new Date(departureDate.getTime() + 5 * 60 * 60 * 1000).toISOString() : new Date().toISOString(),
-            airline_name: "Sky Airways",
-            flight_number: "SA-1234",
-            load_date: new Date().toISOString(),
-            duration: "5h 10m"
-          },
-          {
-            flight_id: "FL456",
-            price_raw: 550,
-            price_formatted: "$550",
-            origin_id: origin,
-            destination_id: destination,
-            departure_time: departureDate ? new Date(departureDate.getTime() + 2 * 60 * 60 * 1000).toISOString() : new Date().toISOString(),
-            arrival_time: departureDate ? new Date(departureDate.getTime() + 7 * 60 * 60 * 1000).toISOString() : new Date().toISOString(),
-            airline_name: "Global Airlines",
-            flight_number: "GA-5678",
-            load_date: new Date().toISOString(),
-            duration: "4h 45m"
-          }
-        ];
-        
-        setFlights(mockFlights);
-        
-        // If round-trip, set mock return flights
-        if (tripType === 'round-trip' && returnDate) {
-          const mockReturnFlights = [
-            {
-              flight_id: "FL789",
-              price_raw: 480,
-              price_formatted: "$480",
-              origin_id: destination,
-              destination_id: origin,
-              departure_time: returnDate ? returnDate.toISOString() : new Date().toISOString(),
-              arrival_time: returnDate ? new Date(returnDate.getTime() + 5 * 60 * 60 * 1000).toISOString() : new Date().toISOString(),
-              airline_name: "Sky Airways",
-              flight_number: "SA-9876",
-              load_date: new Date().toISOString(),
-              duration: "5h 30m"
-            },
-            {
-              flight_id: "FL012",
-              price_raw: 520,
-              price_formatted: "$520",
-              origin_id: destination,
-              destination_id: origin,
-              departure_time: returnDate ? new Date(returnDate.getTime() + 3 * 60 * 60 * 1000).toISOString() : new Date().toISOString(),
-              arrival_time: returnDate ? new Date(returnDate.getTime() + 8 * 60 * 60 * 1000).toISOString() : new Date().toISOString(),
-              airline_name: "Global Airlines",
-              flight_number: "GA-5432",
-              load_date: new Date().toISOString(),
-              duration: "5h 15m"
-            }
-          ];
-          
-          setReturnFlights(mockReturnFlights);
-        }
-        
-        setLoading(false);
-      }, 1500); // Simulate loading time
-
-      /* Commented out the actual API calls until backend is fixed
       const formattedDepartureDate = departureDate ? format(departureDate, 'yyyy-MM-dd') : '';
       
       // Fetch outbound flights
@@ -195,7 +124,19 @@ const FlightSearchPage: React.FC = () => {
         },
       });
       
-      setFlights(flightResponse.data);
+      console.log('Outbound flight response:', flightResponse.data);
+      
+      // Check if API returned data properly
+      if (flightResponse.data && Array.isArray(flightResponse.data)) {
+        setFlights(flightResponse.data);
+      } else {
+        // Handle the case where data is not an array
+        console.error('Invalid flight data format:', flightResponse.data);
+        setError('Invalid data format received from the server');
+        // Use fallback data
+        const fallbackFlights = generateMockFlights(origin, destination, departureDate);
+        setFlights(fallbackFlights);
+      }
       
       // If round-trip, fetch return flights
       if (tripType === 'round-trip' && returnDate) {
@@ -209,20 +150,85 @@ const FlightSearchPage: React.FC = () => {
           },
         });
         
-        setReturnFlights(returnFlightResponse.data);
+        console.log('Return flight response:', returnFlightResponse.data);
+        
+        // Check if API returned data properly
+        if (returnFlightResponse.data && Array.isArray(returnFlightResponse.data)) {
+          setReturnFlights(returnFlightResponse.data);
+        } else {
+          // Handle the case where data is not an array
+          console.error('Invalid return flight data format:', returnFlightResponse.data);
+          // Use fallback data
+          const fallbackReturnFlights = generateMockFlights(destination, origin, returnDate);
+          setReturnFlights(fallbackReturnFlights);
+        }
       }
       
-      if (flightResponse.data.length === 0) {
+      // Check if we need to show any errors
+      if (flightResponse.data && Array.isArray(flightResponse.data) && flightResponse.data.length === 0) {
         setError('No outbound flights found for the selected criteria. Try different dates or destinations.');
       } else if (tripType === 'round-trip' && returnFlights.length === 0) {
         setError('No return flights found for the selected criteria. Try different dates.');
       }
-      */
+      
+      setLoading(false);
     } catch (err: any) {
       console.error('Error fetching flights:', err);
       setError(err.response?.data?.detail || 'Failed to fetch flights');
+      
+      // Use fallback mock data if API fails
+      const fallbackFlights = generateMockFlights(origin, destination, departureDate);
+      setFlights(fallbackFlights);
+      
+      if (tripType === 'round-trip' && returnDate) {
+        const fallbackReturnFlights = generateMockFlights(destination, origin, returnDate);
+        setReturnFlights(fallbackReturnFlights);
+      }
+      
       setLoading(false);
     }
+  };
+  
+  // Function to generate mock flight data as fallback
+  const generateMockFlights = (from: string, to: string, date: Date | undefined): Flight[] => {
+    const airlines = [
+      "Sky Airways", "Global Airlines", "Delta", "United", 
+      "American Airlines", "JetBlue", "Southwest", "Air France"
+    ];
+    
+    const mockFlights: Flight[] = [];
+    const flightCount = Math.floor(Math.random() * 3) + 2; // 2-4 flights
+    
+    for (let i = 0; i < flightCount; i++) {
+      const departureTime = date ? new Date(date) : new Date();
+      departureTime.setHours(departureTime.getHours() + Math.floor(Math.random() * 24));
+      
+      const durationHours = Math.floor(Math.random() * 10) + 2; // 2-12 hours
+      const durationMinutes = Math.floor(Math.random() * 60);
+      
+      const arrivalTime = new Date(departureTime);
+      arrivalTime.setHours(arrivalTime.getHours() + durationHours);
+      arrivalTime.setMinutes(arrivalTime.getMinutes() + durationMinutes);
+      
+      const price = Math.floor(Math.random() * 800) + 200; // $200-$1000
+      const airline = airlines[Math.floor(Math.random() * airlines.length)];
+      
+      mockFlights.push({
+        flight_id: `FL${Math.floor(Math.random() * 10000)}`,
+        price_raw: price,
+        price_formatted: `$${price}`,
+        origin_id: from,
+        destination_id: to,
+        departure_time: departureTime.toISOString(),
+        arrival_time: arrivalTime.toISOString(),
+        airline_name: airline,
+        flight_number: `${airline.substring(0, 2).toUpperCase()}-${Math.floor(Math.random() * 9000) + 1000}`,
+        load_date: new Date().toISOString(),
+        duration: `${durationHours}h ${durationMinutes}m`
+      });
+    }
+    
+    return mockFlights;
   };
 
   // Format date for display
