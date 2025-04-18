@@ -5,7 +5,7 @@ import re
 import sys
 import time
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
 
 # Configure logging
@@ -194,6 +194,118 @@ class WeatherTool:
         
         logger.info("No location found in text")
         return None
+        
+    def extract_multiple_locations(self, text: str) -> List[str]:
+        """Extract multiple locations from user query"""
+        logger.info(f"Extracting multiple locations from text: {text}")
+        
+        # If the input includes chat history, extract only the current query
+        if "current query:" in text.lower():
+            try:
+                text = text.lower().split("current query:")[-1].strip()
+                logger.info(f"Extracted current query: {text}")
+            except Exception as e:
+                logger.error(f"Error extracting current query: {str(e)}")
+        
+        locations = []
+        
+        # Pattern for locations with connecting words ("and", "or", etc.)
+        location_pattern = r"(?:in|at|for)\s+([A-Za-z\s]+?)(?:(?:,|\s+and|\s+&|\s+or|\s+as well as)|\s+and\s+([A-Za-z\s]+?)(?:$|,)|\s+or\s+([A-Za-z\s]+?)(?:$|,))"
+        
+        # Extract locations from patterns
+        matches = list(re.finditer(location_pattern, text, re.IGNORECASE))
+        for match in matches:
+            # Get the first match group
+            location = match.group(1).strip() if match.group(1) else None
+            if location and location.lower() not in [loc.lower() for loc in locations]:
+                locations.append(location)
+            
+            # Check for additional locations in other groups
+            for i in range(2, 4):  # Check groups 2 and 3 if they exist
+                if match.group(i):
+                    location = match.group(i).strip()
+                    if location and location.lower() not in [loc.lower() for loc in locations]:
+                        locations.append(location)
+        
+        # Also try the single location extractor for the first location
+        single_location = self.extract_location(text)
+        if single_location and single_location.lower() not in [loc.lower() for loc in locations]:
+            locations.append(single_location)
+        
+        # If we found multiple locations, great!
+        if len(locations) > 1:
+            logger.info(f"Multiple locations extracted: {locations}")
+            return locations
+        
+        # If we only found one or no locations using the complex pattern,
+        # try looking for common city names
+        if len(locations) <= 1:
+            common_cities = ["New York", "London", "Paris", "Tokyo", "Berlin", "Rome", "Madrid", "Beijing", "Sydney", 
+                            "Boston", "Chicago", "Los Angeles", "San Francisco", "Seattle", "Miami", "Toronto", 
+                            "Mumbai", "Delhi", "Bangkok", "Singapore", "Seoul", "Shanghai", "Mexico City"]
+            
+            # Simple pattern to match cities separated by connectors
+            cities_pattern = r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)(?:\s*(?:,|and|&|or)\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)"
+            
+            city_matches = re.finditer(cities_pattern, text)
+            for match in city_matches:
+                for i in range(1, 3):  # Check groups 1 and 2
+                    if match.group(i):
+                        potential_city = match.group(i).strip()
+                        if potential_city in common_cities and potential_city.lower() not in [loc.lower() for loc in locations]:
+                            locations.append(potential_city)
+            
+            # Direct city name extraction
+            for city in common_cities:
+                if city.lower() in text.lower() and city.lower() not in [loc.lower() for loc in locations]:
+                    locations.append(city)
+        
+        logger.info(f"Final locations extracted: {locations}")
+        return locations
+
+    def get_weather_for_multiple_locations(self, locations: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Get weather data for multiple locations"""
+        weather_results = {}
+        
+        for location in locations:
+            try:
+                weather_data = self.get_current_weather(location)
+                weather_results[location] = weather_data
+            except Exception as e:
+                logger.error(f"Error getting weather for {location}: {str(e)}")
+                weather_results[location] = {
+                    "error": str(e),
+                    "location": location
+                }
+        
+        return weather_results
+
+    def format_weather_response(self, weather_results: Dict[str, Dict[str, Any]]) -> str:
+        """Format weather data from multiple locations into a readable response"""
+        if not weather_results:
+            return "I couldn't find weather information for the locations you mentioned."
+        
+        # Single location case
+        if len(weather_results) == 1:
+            location = list(weather_results.keys())[0]
+            data = weather_results[location]
+            
+            if "error" in data:
+                return f"I tried to get weather information for {location}, but encountered an error: {data['error']}"
+            
+            return f"Here's the current weather for {location}: {data.get('report', 'No data available.')}"
+        
+        # Multiple locations
+        response_parts = ["Here's the current weather information:"]
+        
+        for location, data in weather_results.items():
+            if "error" in data:
+                response_parts.append(f"• {location}: Sorry, I couldn't retrieve weather data for this location.")
+            else:
+                report = data.get("report", "No data available")
+                response_parts.append(f"• {location}: {report}")
+        
+        return "\n\n".join(response_parts)
 
     def get_simulated_weather(self, location: str) -> Dict[str, Any]:
         """Provide simulated weather data when MCP server fails"""
@@ -216,5 +328,3 @@ if __name__ == "__main__":
     finally:
         weather_tool.stop_server()
         logger.info("Test complete")
-
-

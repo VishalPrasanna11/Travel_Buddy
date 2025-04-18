@@ -118,10 +118,7 @@ def root_agent_node(state: TravelAgentState) -> TravelAgentState:
         "weather": "weather_agent"
     }
     
-    # Extract weather location if present
-    location = weather_tool.extract_location(user_input)
-    
-    # Check for weather queries - include more comprehensive patterns
+    # Check for weather queries - include comprehensive patterns
     weather_patterns = [
         r"(weather|forecast|temperature|rain|sunny|cloudy|hot|cold|humid|wind|storms?)",
         r"(what('s| is) it like in)",
@@ -131,99 +128,73 @@ def root_agent_node(state: TravelAgentState) -> TravelAgentState:
     
     is_weather_query = any(re.search(pattern, user_input, re.IGNORECASE) for pattern in weather_patterns)
     
-    # If no explicit location mentioned but it looks like a weather query, try to extract location
-    if not location and is_weather_query:
-        # Try to identify common city names in the query
-        common_cities = ["New York", "London", "Paris", "Tokyo", "Berlin", "Rome", "Madrid", "Beijing", "Sydney"]
-        for city in common_cities:
-            if city.lower() in user_input.lower():
-                location = city
-                break
-    
-    # Direct handling of weather queries when both location and weather pattern are detected
-    if location and is_weather_query:
-        # Log that we detected a weather query
-        logger.info(f"Detected weather query for location: {location}")
+    # Handle weather queries - now with support for multiple locations
+    if is_weather_query:
+        # Try to extract multiple locations
+        locations = weather_tool.extract_multiple_locations(user_input)
         
-        try:
-            # Get weather data
-            weather_data = weather_tool.get_current_weather(location)
-            # Store in state for use by other agents
-            state["weather_data"] = weather_data
+        # If we found locations, process them
+        if locations:
+            logger.info(f"Detected weather query for locations: {locations}")
             
-            # If this is ONLY a weather query with no other travel aspects
-            # Simplified check that's more robust to variations
-            is_pure_weather_query = any([
-                re.match(rf".*?(weather|forecast|temperature).*?(?:in|at|for)\s+{re.escape(location)}.*?", user_input, re.IGNORECASE),
-                re.match(rf".*?(?:in|at)\s+{re.escape(location)}.*?(weather|forecast).*?", user_input, re.IGNORECASE),
-                re.match(rf".*?{re.escape(location)}.*?(weather|forecast|temperature).*?", user_input, re.IGNORECASE)
-            ])
-            
-            # Check if there are travel planning aspects
-            has_travel_aspects = re.search(r"(hotel|flight|itinerary|trip|travel plan|book|reserve)", user_input)
-            
-            logger.info(f"Pure weather query: {is_pure_weather_query}, Has travel aspects: {has_travel_aspects}")
-            
-            if is_pure_weather_query and not has_travel_aspects:
-                # Direct weather query - handle directly
-                weather_response = f"Here's the weather information for {location}: {weather_data.get('report', 'Could not retrieve weather data.')}"
+            try:
+                # Get weather for all locations
+                weather_results = weather_tool.get_weather_for_multiple_locations(locations)
                 
-                logger.info(f"Returning direct weather response: {weather_response[:50]}...")
+                # Store in state for use by other agents
+                state["weather_data"] = weather_results
                 
-                # Set the flag to indicate we've directly handled the weather response
-                state["is_weather_response"] = True
+                # Check if there are travel planning aspects
+                has_travel_aspects = re.search(r"(hotel|flight|itinerary|trip|travel plan|book|reserve)", user_input)
                 
-                # Clear any existing messages to ensure our weather response is the only one
-                state["messages"] = []
+                # If this is ONLY a weather query with no other travel aspects
+                if not has_travel_aspects:
+                    # Format response for multiple locations
+                    weather_response = weather_tool.format_weather_response(weather_results)
+                    
+                    logger.info(f"Returning direct weather response for multiple locations")
+                    
+                    # Set the flag to indicate we've directly handled the weather response
+                    state["is_weather_response"] = True
+                    
+                    # Clear any existing messages to ensure our weather response is the only one
+                    state["messages"] = []
+                    
+                    # Add the response to messages
+                    state["messages"].append({
+                        "role": "assistant", 
+                        "content": weather_response
+                    })
+                    
+                    # Set the current agent to a valid next node
+                    state["current_agent"] = "explore_agent"
+                    return state
+            except Exception as e:
+                # Log the error but continue with normal routing
+                logger.error(f"Multiple weather data retrieval error: {e}")
                 
-                # Add the response to messages
-                state["messages"].append({
-                    "role": "assistant", 
-                    "content": weather_response
-                })
-                
-                # Set the current agent to a valid next node
-                state["current_agent"] = "explore_agent"
-                return state
-                
-        except Exception as e:
-            # Log the error but continue with normal routing
-            logger.error(f"Weather data retrieval error: {e}")
-            
-            # For direct weather queries, provide a helpful response instead of silent failure
-            # Use the same improved pattern matching as above
-            is_pure_weather_query = any([
-                re.match(rf".*?(weather|forecast|temperature).*?(?:in|at|for)\s+{re.escape(location)}.*?", user_input, re.IGNORECASE),
-                re.match(rf".*?(?:in|at)\s+{re.escape(location)}.*?(weather|forecast).*?", user_input, re.IGNORECASE),
-                re.match(rf".*?{re.escape(location)}.*?(weather|forecast|temperature).*?", user_input, re.IGNORECASE)
-            ])
-            
-            # Check if there are travel planning aspects
-            has_travel_aspects = re.search(r"(hotel|flight|itinerary|trip|travel plan|book|reserve)", user_input)
-            
-            logger.info(f"Error handler - Pure weather query: {is_pure_weather_query}, Has travel aspects: {has_travel_aspects}")
-            
-            if is_pure_weather_query and not has_travel_aspects:
-                
-                error_response = f"I'd like to provide weather information for {location}, but I'm having trouble accessing the weather service at the moment. You can check a reliable weather website for current conditions. If you have any other travel-related questions, I'm happy to help!"
-                
-                logger.info(f"Returning weather error response: {error_response[:50]}...")
-                
-                # Set the flag to indicate we've directly handled the weather response
-                state["is_weather_response"] = True
-                
-                # Clear any existing messages to ensure our error response is the only one
-                state["messages"] = []
-                
-                # Add the response to messages
-                state["messages"].append({
-                    "role": "assistant", 
-                    "content": error_response
-                })
-                
-                # Set the current agent to a valid next node
-                state["current_agent"] = "explore_agent"
-                return state
+                # For direct weather queries, provide a helpful response
+                if not re.search(r"(hotel|flight|itinerary|trip|travel plan|book|reserve)", user_input):
+                    location_names = ", ".join(locations)
+                    error_response = f"I'd like to provide weather information for {location_names}, but I'm having trouble accessing the weather service at the moment. You can check a reliable weather website for current conditions. If you have any other travel-related questions, I'm happy to help!"
+                    
+                    logger.info(f"Returning weather error response for multiple locations")
+                    
+                    # Set the flag to indicate we've directly handled the weather response
+                    state["is_weather_response"] = True
+                    
+                    # Clear any existing messages to ensure our error response is the only one
+                    state["messages"] = []
+                    
+                    # Add the response to messages
+                    state["messages"].append({
+                        "role": "assistant", 
+                        "content": error_response
+                    })
+                    
+                    # Set the current agent to a valid next node
+                    state["current_agent"] = "explore_agent"
+                    return state
     
     # If we get here, this is not a pure weather query or we couldn't handle it directly
     # Continue with regular agent routing
