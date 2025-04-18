@@ -1,9 +1,7 @@
-import subprocess
 import json
 import os
 import re
-import sys
-import time
+import requests
 import logging
 from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
@@ -19,66 +17,24 @@ logger = logging.getLogger("weather_tool")
 load_dotenv()
 
 class WeatherTool:
-    def __init__(self, mcp_server_path=None):
-        # Path to the MCP server
-        self.mcp_server_path = mcp_server_path or "/Users/vishalp/Documents/MSIS/3rd Sem/DAMG7245/final_project/DAMG_Travel_Buddy/weekly-weather-mcp-master/simplified_mcp_server.py"
-        self.process = None
+    def __init__(self, mcp_server_url=None):
+        # URL for the containerized MCP server
+        self.mcp_server_url = mcp_server_url or "http://weather-mcp:8080"
         
-    def start_server(self):
-        """Start the MCP server if not already running"""
-        if self.process is None or self.process.poll() is not None:
-            # Add necessary environment variables
-            env = os.environ.copy()
-            
-            # Check for OpenWeather API key
-            if "OPENWEATHER_API_KEY" not in env:
-                logger.error("OPENWEATHER_API_KEY environment variable not set")
-                raise ValueError("OPENWEATHER_API_KEY environment variable not set")
-            
-            # Check for OpenAI API key (needed by the weather agent)
-            if "OPENAI_API_KEY" not in env:
-                logger.error("OPENAI_API_KEY environment variable not set")
-                raise ValueError("OPENAI_API_KEY environment variable not set")
-            
-            # Log important information
-            logger.info(f"Starting MCP server from path: {self.mcp_server_path}")
-            logger.info(f"Using OpenWeather API key: {env['OPENWEATHER_API_KEY'][:5]}...")
-            
-            try:
-                self.process = subprocess.Popen(
-                    [sys.executable, self.mcp_server_path],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,
-                    env=env
-                )
-                
-                # Give the server time to start
-                time.sleep(2)
-                logger.info("MCP server started successfully")
-                
-            except Exception as e:
-                logger.error(f"Failed to start MCP server: {str(e)}")
-                raise
-    
-    def stop_server(self):
-        """Stop the MCP server"""
-        if self.process and self.process.poll() is None:
-            try:
-                self.process.terminate()
-                logger.info("MCP server terminated")
-            except Exception as e:
-                logger.error(f"Error terminating MCP server: {str(e)}")
-            finally:
-                self.process = None
+        # Fallback to localhost if container name doesn't resolve
+        self.fallback_url = "http://localhost:8080"
+        
+        # Check for OpenWeather API key
+        if "OPENWEATHER_API_KEY" not in os.environ:
+            logger.error("OPENWEATHER_API_KEY environment variable not set")
+            raise ValueError("OPENWEATHER_API_KEY environment variable not set")
+        
+        logger.info(f"Initialized WeatherTool with MCP server URL: {self.mcp_server_url}")
+        logger.info(f"Using OpenWeather API key: {os.environ.get('OPENWEATHER_API_KEY', '')[:5]}...")
     
     def call_mcp(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """Call an MCP tool with parameters"""
+        """Call the containerized MCP server with parameters"""
         try:
-            self.start_server()
-            
             # Create JSON-RPC request
             request = {
                 "jsonrpc": "2.0",
@@ -92,42 +48,53 @@ class WeatherTool:
             
             logger.info(f"Sending request to MCP server: {json.dumps(request)[:100]}...")
             
-            # Send request to server
-            self.process.stdin.write(json.dumps(request) + "\n")
-            self.process.stdin.flush()
-            
-            # Read response with timeout
-            start_time = time.time()
-            response_line = ""
-            
-            while time.time() - start_time < 30:  # 30 second timeout
-                if self.process.stdout.readable():
-                    response_line = self.process.stdout.readline().strip()
-                    if response_line:
-                        break
-                time.sleep(0.1)
-            
-            if not response_line:
-                logger.error("Timeout waiting for MCP server response")
-                return {"error": "Timeout waiting for MCP server response"}
-            
-            logger.info(f"Received response from MCP server: {response_line[:100]}...")
-            
+            # Try the primary URL first
             try:
-                response = json.loads(response_line)
+                response = self._send_request(self.mcp_server_url, request)
+                return response
+            except requests.RequestException as e:
+                logger.warning(f"Failed to connect to primary MCP server URL: {str(e)}")
                 
-                if "error" in response:
-                    logger.error(f"Error in MCP response: {response['error']}")
-                    return {"error": response["error"]}
-                
-                return response.get("result", {})
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse MCP response: {str(e)}")
-                return {"error": f"Failed to parse MCP response: {str(e)}"}
+                # Try the fallback URL
+                logger.info(f"Trying fallback URL: {self.fallback_url}")
+                try:
+                    response = self._send_request(self.fallback_url, request)
+                    # If fallback works, update the primary URL for future calls
+                    self.mcp_server_url = self.fallback_url
+                    return response
+                except requests.RequestException as fallback_error:
+                    logger.error(f"Failed to connect to fallback MCP server URL: {str(fallback_error)}")
+                    # Return simulated data as last resort
+                    if tool_name in ["get_weather", "get_current_weather"]:
+                        location = parameters.get("location", "Unknown location")
+                        return self.get_simulated_weather(location)
+                    return {"error": f"Failed to connect to MCP server: {str(fallback_error)}"}
                 
         except Exception as e:
             logger.error(f"Error calling MCP: {str(e)}")
             return {"error": f"Error calling MCP: {str(e)}"}
+    
+    def _send_request(self, url: str, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Send request to MCP server and process response"""
+        response = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(request),
+            timeout=30  # 30 second timeout
+        )
+        
+        # Check for HTTP errors
+        response.raise_for_status()
+        
+        # Parse response
+        response_data = response.json()
+        logger.info(f"Received response from MCP server: {json.dumps(response_data)[:100]}...")
+        
+        if "error" in response_data:
+            logger.error(f"Error in MCP response: {response_data['error']}")
+            return {"error": response_data["error"]}
+        
+        return response_data.get("result", {})
     
     def get_weather(self, location: str, timezone_offset: float = 0) -> Dict[str, Any]:
         """Get comprehensive weather forecast for a location"""
@@ -321,10 +288,32 @@ weather_tool = WeatherTool()
 if __name__ == "__main__":
     try:
         logger.info("Starting weather tool test")
-        result = weather_tool.get_current_weather("London")
-        logger.info(f"Test result: {result}")
+        
+        # Test with both the container hostname and localhost fallback
+        test_locations = ["London", "New York", "Tokyo"]
+        
+        for location in test_locations:
+            try:
+                result = weather_tool.get_current_weather(location)
+                logger.info(f"Weather for {location}: {result}")
+            except Exception as e:
+                logger.error(f"Error getting weather for {location}: {str(e)}")
+                
+        # Test location extraction
+        test_queries = [
+            "What's the weather like in Paris?",
+            "Tell me about the weather in Tokyo and London",
+            "I'm planning a trip to Berlin next week"
+        ]
+        
+        for query in test_queries:
+            location = weather_tool.extract_location(query)
+            logger.info(f"Query: {query} -> Location: {location}")
+            
+            locations = weather_tool.extract_multiple_locations(query)
+            logger.info(f"Query: {query} -> Multiple locations: {locations}")
+            
     except Exception as e:
         logger.error(f"Test failed: {str(e)}")
     finally:
-        weather_tool.stop_server()
         logger.info("Test complete")

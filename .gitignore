@@ -20,6 +20,7 @@ downloads/
 eggs/
 .eggs/
 
+myenv
 lib64/
 parts/
 sdist/

@@ -24,30 +24,51 @@ services:
       - AMADEUS_CLIENT_ID=${AMADEUS_CLIENT_ID}
       - AMADEUS_CLIENT_SECRET=${AMADEUS_CLIENT_SECRET}
       - GOOGLE_PLACE_API_KEY=${GOOGLE_PLACE_API_KEY}
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
     volumes:
       - ./server:/app
     networks:
       - travel-buddy-network
     restart: unless-stopped
 
-  # client:
-  #   build:
-  #     context: ./client
-  #     dockerfile: Dockerfile
-  #   container_name: travel-buddy-client
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - VITE_AUTH0_DOMAIN=${VITE_AUTH0_DOMAIN}
-  #     - VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID}
-  #     - VITE_AUTH0_REDIRECT_URI=${VITE_AUTH0_REDIRECT_URI}
-  #     - VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
-  #   volumes:
-  #     - ./client:/app
-  #     - /app/node_modules
-  #   networks:
-  #     - travel-buddy-network
-  #   restart: unless-stopped
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: travel-buddy-client
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_AUTH0_DOMAIN=${VITE_AUTH0_DOMAIN}
+      - VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID}
+      - VITE_AUTH0_REDIRECT_URI=${VITE_AUTH0_REDIRECT_URI}
+      - VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
+      - VITE_BASE_URL=${VITE_BASE_URL}
+      - VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    networks:
+      - travel-buddy-network
+    restart: unless-stopped
+  
+  weather-mcp:
+    build:
+      context: ./weather-mcp
+      dockerfile: Dockerfile
+    container_name: weather-mcp-server
+    ports:
+      - "8080:8080"
+    environment:
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - OPENWEATHER_API_URL=${OPENWEATHER_API_URL}
+    volumes:
+      - ./weather-mcp:/app
+    networks:
+      - travel-buddy-network
+    restart: unless-stopped
 
 networks:
   travel-buddy-network:

@@ -27,6 +27,7 @@ class PlanningAgentState(TypedDict):
     tools: List[Dict[str, Any]]
     tool_names: List[str]
     last_tool_call_ids: List[str]
+    weather_data: Dict[str, Any]
 
 # ------------------ LLM ------------------ #
 base_llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
@@ -604,11 +605,22 @@ class PlanningAgent:
     def invoke(self, inputs: Dict[str, str]) -> Dict[str, str]:
         """Synchronous invocation of the agent"""
         user_input = inputs.get("input", "")
+        weather_data = inputs.get("weather_data", {})
+        
+        
+                # Add weather data to the prompt if available
+        if weather_data and weather_data.get("report"):
+            weather_info = f"\n\nCurrent weather information: {weather_data.get('report')}"
+            initial_state["messages"].append(SystemMessage(content=weather_info))
+        final_state = self.graph.invoke(initial_state, config={"recursion_limit": 10})
+        
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
             "tools": [],
             "tool_names": [],
-            "last_tool_call_ids": []
+            "last_tool_call_ids": [],
+            "weather_data": weather_data
+            
         }
         final_state = self.graph.invoke(initial_state, config={"recursion_limit": 10})
 
@@ -646,12 +658,23 @@ class PlanningAgent:
         """Asynchronous invocation of the agent"""
         logger.info(f"🔍 ainvoke called with inputs: {inputs}")
         user_input = inputs.get("input", "")
+        weather_data = inputs.get("weather_data", {})
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
             "tools": [],
             "tool_names": [],
-            "last_tool_call_ids": []
+            "last_tool_call_ids": [],
+            "weather_data": weather_data
         }
+        
+        
+        if weather_data and weather_data.get("report"):
+            weather_info = f"\n\nCurrent weather information: {weather_data.get('report')}"
+            initial_state["messages"].append(SystemMessage(content=weather_info))
+        final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})
+        
+        
+        
         
         # Initialize response with default structure and status
         response = {
