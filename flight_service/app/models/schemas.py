@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 class FlightRequest(BaseModel):
@@ -15,6 +15,24 @@ class FlightRequest(BaseModel):
             return v
         except ValueError:
             raise ValueError("Invalid date format. Use YYYY-MM-DD")
+            
+    @validator('source', 'destination')
+    def convert_to_uppercase(cls, v):
+        return v.upper() if v else v
+        
+class Flight(BaseModel):
+    """Individual flight schema"""
+    flight_id: str
+    price_raw: float
+    price_formatted: str
+    origin_id: str
+    destination_id: str
+    departure_time: str
+    arrival_time: str
+    airline_name: str
+    flight_number: str
+    load_date: str
+    duration: str
 
 class S3ObjectInfo(BaseModel):
     """Information about an object stored in S3"""
@@ -38,3 +56,4 @@ class FlightResponse(BaseModel):
     daily_data_url: str
     monthly_data_url: str
     airflow_dag_run: Dict[str, Any]
+    flights: Optional[List[Flight]] = []
