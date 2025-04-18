@@ -2,6 +2,11 @@ import json
 import sys
 import os
 import requests
+import socket
+import http.server
+import socketserver
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import logging
@@ -191,38 +196,106 @@ class SimplifiedMCP:
             logger.error(f"Error handling request: {str(e)}")
             return {"error": str(e)}
     
-    def run(self):
-        """Run the server in STDIO mode"""
-        logger.info("Simplified MCP server running...")
+    def start_http_server(self, port=8080):
+        """Start an HTTP server to handle incoming JSON-RPC requests"""
         
-        try:
-            for line in sys.stdin:
-                line = line.strip()
-                if not line:
-                    continue
-                    
+        class MCP_RequestHandler(http.server.BaseHTTPRequestHandler):
+            def __init__(self, *args, mcp_instance=None, **kwargs):
+                self.mcp_instance = mcp_instance
+                super().__init__(*args, **kwargs)
+            
+            def do_POST(self):
+                content_length = int(self.headers['Content-Length'])
+                post_data = self.rfile.read(content_length)
+                
                 try:
-                    request = json.loads(line)
-                    response = self.handle_request(request)
+                    request_data = json.loads(post_data.decode('utf-8'))
+                    response = self.mcp_instance.handle_request(request_data)
                     
-                    if "id" in request:
-                        response["id"] = request["id"]
+                    if "id" in request_data:
+                        response["id"] = request_data["id"]
                         
                     response["jsonrpc"] = "2.0"
-                    print(json.dumps(response))
-                    sys.stdout.flush()
                     
-                except json.JSONDecodeError:
-                    print(json.dumps({
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    
+                    self.wfile.write(json.dumps(response).encode('utf-8'))
+                except Exception as e:
+                    logger.error(f"Error handling HTTP request: {str(e)}")
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    
+                    error_response = {
                         "jsonrpc": "2.0",
-                        "error": "Invalid JSON",
+                        "error": str(e),
                         "id": None
-                    }))
-                    sys.stdout.flush()
-                    
+                    }
+                    self.wfile.write(json.dumps(error_response).encode('utf-8'))
+            
+            def log_message(self, format, *args):
+                # Override to use our logger instead of printing to stderr
+                logger.info(f"HTTP: {format % args}")
+        
+        # Create handler with a reference to this instance
+        handler = lambda *args, **kwargs: MCP_RequestHandler(*args, mcp_instance=self, **kwargs)
+        
+        # Create HTTP server
+        server_address = ('', port)
+        httpd = socketserver.ThreadingTCPServer(server_address, handler)
+        httpd.allow_reuse_address = True
+        
+        logger.info(f"Starting HTTP server on port {port}")
+        
+        try:
+            # Run the server
+            httpd.serve_forever()
         except KeyboardInterrupt:
-            logger.info("Server shutting down...")
-            return
+            logger.info("Shutting down HTTP server...")
+            httpd.shutdown()
+    
+    def run(self):
+        """Run the server in the appropriate mode"""
+        logger.info("Simplified MCP server running...")
+        
+        # Check if we're running in a container by checking environment
+        if os.environ.get("CONTAINER_MODE", "0") == "1" or not sys.stdin.isatty():
+            # HTTP mode (containerized or non-interactive)
+            logger.info("Running in HTTP mode (for container)")
+            self.start_http_server(port=8080)
+        else:
+            # STDIO mode (interactive)
+            logger.info("Running in STDIO mode (interactive)")
+            try:
+                for line in sys.stdin:
+                    line = line.strip()
+                    if not line:
+                        continue
+                        
+                    try:
+                        request = json.loads(line)
+                        response = self.handle_request(request)
+                        
+                        if "id" in request:
+                            response["id"] = request["id"]
+                            
+                        response["jsonrpc"] = "2.0"
+                        print(json.dumps(response))
+                        sys.stdout.flush()
+                        
+                    except json.JSONDecodeError:
+                        print(json.dumps({
+                            "jsonrpc": "2.0",
+                            "error": "Invalid JSON",
+                            "id": None
+                        }))
+                        sys.stdout.flush()
+                        
+            except KeyboardInterrupt:
+                logger.info("Server shutting down...")
+                return
 
 if __name__ == "__main__":
     server = SimplifiedMCP()

@@ -10,7 +10,10 @@ from subagents.explore.agent import agent as explore_agent
 from subagents.pre_travel.agent import PreTripAgent
 from subagents.planning.agent import PlanningAgent
 from tools.memory import _load_precreated_itinerary
+from tools.weather_tool import weather_tool
+import logging
 
+logger = logging.getLogger("root_agent")
 
 class TravelAgentState(TypedDict):
     messages: List[Dict[str, Any]]
@@ -18,6 +21,8 @@ class TravelAgentState(TypedDict):
     agent_scratchpad: List[Dict[str, Any]]
     current_agent: str
     itinerary: Dict[str, Any]
+    weather_data: Dict[str, Any]
+    is_weather_response: bool
 
 llm = ChatOpenAI(model="gpt-4o")
 
@@ -25,6 +30,9 @@ planning_agent_instance = PlanningAgent()
 
 
 def explore_agent_node(state: TravelAgentState) -> TravelAgentState:
+    if state.get("is_weather_response", False):
+        logger.info("Skipping explore agent - weather already handled")
+        return state
     result = explore_agent.invoke({"input": state["user_input"]})
     output = result.get("output", str(result))
     state["messages"].append({"role": "assistant", "content": output})
@@ -33,6 +41,9 @@ def explore_agent_node(state: TravelAgentState) -> TravelAgentState:
 
 
 def pre_travel_agent_node(state: TravelAgentState) -> TravelAgentState:
+    if state.get("is_weather_response", False):
+        logger.info("Skipping planning agent - weather already handled")
+        return state
     result = PreTripAgent().invoke({"input": state["user_input"]})
     output = result.get("output", str(result))
     state["messages"].append({"role": "assistant", "content": output})
@@ -41,12 +52,19 @@ def pre_travel_agent_node(state: TravelAgentState) -> TravelAgentState:
 
 
 def planning_agent_node(state: TravelAgentState) -> TravelAgentState:
+    if state.get("is_weather_response", False):
+        logger.info("Skipping planning agent - weather already handled")
+        return state
     sub_state = {
         "messages": [HumanMessage(content=state["user_input"])],
         "tools": [],
         "tool_names": [],
-        "last_tool_call_ids": []
+        "last_tool_call_ids": [],
+        "weather_tool": state.get("weather_data", {})
     }
+    
+    weather_data = state.get("weather_data", {})
+    
     sub_result = planning_agent_instance.graph.invoke(sub_state)
 
     # First look for tool messages with structured data
@@ -176,7 +194,7 @@ class Agent:
             return {"output": final_state["messages"][-1]["content"]}
         return {"output": "No response generated."}
 
-    from typing import Dict, Any, List, TypedDict
+from typing import Dict, Any, List, TypedDict
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, END
@@ -276,7 +294,86 @@ def root_agent_node(state: TravelAgentState) -> TravelAgentState:
         "post_travel": "post_travel_agent",
         "pre_travel": "pre_travel_agent"
     }
+        # Check for weather queries - include comprehensive patterns
+    weather_patterns = [
+        r"(weather|forecast|temperature|rain|sunny|cloudy|hot|cold|humid|wind|storms?)",
+        r"(what('s| is) it like in)",
+        r"(should I (bring|pack|wear))",
+        r"(will it (rain|snow|be (hot|cold|sunny|cloudy)))"
+    ]
+    
+    is_weather_query = any(re.search(pattern, user_input, re.IGNORECASE) for pattern in weather_patterns)
 
+    # Handle weather queries - now with support for multiple locations
+    if is_weather_query:
+        # Try to extract multiple locations
+        locations = weather_tool.extract_multiple_locations(user_input)
+        
+        # If we found locations, process them
+        if locations:
+            logger.info(f"Detected weather query for locations: {locations}")
+            
+            try:
+                # Get weather for all locations
+                weather_results = weather_tool.get_weather_for_multiple_locations(locations)
+                
+                # Store in state for use by other agents
+                state["weather_data"] = weather_results
+                
+                # Check if there are travel planning aspects
+                has_travel_aspects = re.search(r"(hotel|flight|itinerary|trip|travel plan|book|reserve)", user_input)
+                
+                # If this is ONLY a weather query with no other travel aspects
+                if not has_travel_aspects:
+                    # Format response for multiple locations
+                    weather_response = weather_tool.format_weather_response(weather_results)
+                    
+                    logger.info(f"Returning direct weather response for multiple locations")
+                    
+                    # Set the flag to indicate we've directly handled the weather response
+                    state["is_weather_response"] = True
+                    
+                    # Clear any existing messages to ensure our weather response is the only one
+                    state["messages"] = []
+                    
+                    # Add the response to messages
+                    state["messages"].append({
+                        "role": "assistant", 
+                        "content": weather_response
+                    })
+                    
+                    # Set the current agent to a valid next node
+                    state["current_agent"] = "explore_agent"
+                    return state
+            except Exception as e:
+                # Log the error but continue with normal routing
+                logger.error(f"Multiple weather data retrieval error: {e}")
+                
+                # For direct weather queries, provide a helpful response
+                if not re.search(r"(hotel|flight|itinerary|trip|travel plan|book|reserve)", user_input):
+                    location_names = ", ".join(locations)
+                    error_response = f"I'd like to provide weather information for {location_names}, but I'm having trouble accessing the weather service at the moment. You can check a reliable weather website for current conditions. If you have any other travel-related questions, I'm happy to help!"
+                    
+                    logger.info(f"Returning weather error response for multiple locations")
+                    
+                    # Set the flag to indicate we've directly handled the weather response
+                    state["is_weather_response"] = True
+                    
+                    # Clear any existing messages to ensure our error response is the only one
+                    state["messages"] = []
+                    
+                    # Add the response to messages
+                    state["messages"].append({
+                        "role": "assistant", 
+                        "content": error_response
+                    })
+                    
+                    # Set the current agent to a valid next node
+                    state["current_agent"] = "explore_agent"
+                    return state
+    
+    
+    
     # Expanded keyword routing
     if re.search(r"(flight|flights?|airfare|plane|book.*(ticket|flight)|show.*flights?|find.*flight)", user_input):
         response_text = "planning"
