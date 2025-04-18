@@ -18,7 +18,7 @@ def perform_google_places_explore(location: str, api_key: str) -> Dict[str, Any]
     }
 
     try:
-        logger.info(f"📍 Searching Google Places for: {location}")
+        logger.info(f" Searching Google Places for: {location}")
         response = httpx.get(GOOGLE_PLACES_URL, params=params, timeout=30)
         response.raise_for_status()
         results = response.json().get("results", [])[:10]

@@ -14,16 +14,24 @@ class PreTripAgentState(TypedDict):
     tools: List[Dict[str, Any]]
     tool_names: List[str]
     last_tool_call_ids: List[str]
+    weather_data: Dict[str, Any]
 
 # LLM setup
 base_llm = ChatOpenAI(model="gpt-4o", temperature=0.2)
 structured_llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
 
 # Tools
-def what_to_pack_agent(input_str: str):
+def what_to_pack_agent(input_str: str, weather_data: Dict[str, Any] = None):
+    # Add weather information to the prompt if available
+    weather_context = ""
+    if weather_data and weather_data.get("report"):
+        weather_context = f"\n\nWeather information for the destination: {weather_data.get('report')}"
+    
     prompt = ChatPromptTemplate.from_template("""
     Given a trip origin, a destination, and some rough idea of activities, 
     suggests a handful of items to pack appropriate for the trip.
+    
+    {weather_context}
 
     Return in JSON format, a list of items to pack, e.g. [ "walking shoes", "fleece", "umbrella" ]
 
@@ -31,7 +39,7 @@ def what_to_pack_agent(input_str: str):
     """)
     parser = JsonOutputParser(pydantic_object=PackingList)
     chain = prompt | structured_llm | parser
-    return {"what_to_pack": chain.invoke({"input": input_str})}
+    return {"what_to_pack": chain.invoke({"input": input_str, "weather_context": weather_context})}
 
 tools = [
     {
@@ -95,11 +103,17 @@ def pre_trip_agent(state: PreTripAgentState) -> PreTripAgentState:
 
 # Tool execution logic
 def execute_tool(tool_func, state: PreTripAgentState, tool_key: str) -> PreTripAgentState:
+    # Get weather data from state if available
+    weather_data = state.get("weather_data", {})
     for call in state["tools"]:
         if call["name"] == tool_key and call["id"] in state.get("last_tool_call_ids", []):
             args = call.get("arguments", {})
             try:
-                result = tool_func(**args)
+                # Add weather data for packing agent
+                if tool_key == "what_to_pack_agent":
+                    result = tool_func(**args, weather_data=weather_data)
+                else:
+                    result = tool_func(**args)
                 state["messages"].append(ToolMessage(tool_call_id=call["id"], content=json.dumps(result)))
             except Exception as e:
                 state["messages"].append(ToolMessage(tool_call_id=call["id"], content=json.dumps({"error": str(e)})))
@@ -143,12 +157,21 @@ class PreTripAgent:
         self.name = "pre_trip_agent"
 
     def invoke(self, inputs: Dict[str, str]) -> Dict[str, str]:
+        user_input = inputs.get("input", "")
+        weather_data = inputs.get("weather_data", {})
+        
         initial_state = {
-            "messages": [HumanMessage(content=inputs.get("input", ""))],
+            "messages": [HumanMessage(content=user_input)],
             "tools": [],
             "tool_names": [],
-            "last_tool_call_ids": []
+            "last_tool_call_ids": [],
+            "weather_data": weather_data
         }
+        
+        # Add weather information as a system message if available
+        if weather_data and weather_data.get("report"):
+            weather_info = f"Weather information for the destination: {weather_data.get('report')}"
+            initial_state["messages"].append(SystemMessage(content=weather_info))
         final_state = self.graph.invoke(initial_state)
         for msg in reversed(final_state["messages"]):
             if isinstance(msg, AIMessage):
@@ -156,12 +179,21 @@ class PreTripAgent:
         return {"output": "Unable to process your trip details."}
 
     async def ainvoke(self, inputs: Dict[str, str]) -> Dict[str, str]:
+        user_input = inputs.get("input", "")
+        weather_data = inputs.get("weather_data", {})
+        
         initial_state = {
-            "messages": [HumanMessage(content=inputs.get("input", ""))],
+            "messages": [HumanMessage(content=user_input)],
             "tools": [],
             "tool_names": [],
-            "last_tool_call_ids": []
+            "last_tool_call_ids": [],
+            "weather_data": weather_data
         }
+        
+        # Add weather information as a system message if available
+        if weather_data and weather_data.get("report"):
+            weather_info = f"Weather information for the destination: {weather_data.get('report')}"
+            initial_state["messages"].append(SystemMessage(content=weather_info))
         final_state = await self.graph.ainvoke(initial_state)
         for msg in reversed(final_state["messages"]):
             if isinstance(msg, AIMessage):
