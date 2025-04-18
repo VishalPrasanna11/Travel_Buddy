@@ -1,7 +1,7 @@
 // src/pages/HomePage.tsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, MapPin, Bot, ChevronRight,Compass, Star, Sparkles,  PlaneTakeoff, Hotel, Utensils, Camera, Users, TrendingUp, Clock} from 'lucide-react';
+import { Bot, ChevronRight,Compass, Star, Sparkles,  PlaneTakeoff, Hotel, Utensils, Camera, TrendingUp, Clock} from 'lucide-react';
 import { useAuth0 } from "@auth0/auth0-react";
 import { useCreateMyUser } from "@/api/UserApi";
 // Import shadcn components
@@ -69,17 +69,20 @@ const aiTravelInsights = [
   {
     title: "Best time to visit Thailand",
     description: "Our AI analyzed weather patterns, tourist data, and local events to determine November-February offers optimal conditions.",
-    category: "Seasonal Insights"
+    category: "Seasonal Insights",
+    url: "https://www.enchantingtravels.com/destinations/asia/thailand/best-time-to-visit-thailand/"
   },
   {
     title: "Hidden gems in Portugal",
     description: "Based on local recommendations and off-the-beaten-path locations with high satisfaction ratings.",
-    category: "Destination Discovery"
+    category: "Destination Discovery",
+    url:"https://www.europeanbestdestinations.com/destinations/portugal/best-hidden-gems-in-portugal/"
   },
   {
     title: "Budget-friendly European cities",
     description: "Analysis of accommodation, food, and attraction costs across 50+ European destinations.",
-    category: "Budget Travel"
+    category: "Budget Travel",
+    url:"https://travelbinger.com/europe-budget/"
   }
 ];
 
@@ -157,18 +160,7 @@ const HomePage = () => {
 
   //Don't remove above
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [destination, setDestination] = useState("");
-  const [dates, setDates] = useState("");
-  const [travelers, setTravelers] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (destination) {
-      navigate(`/search?destination=${destination}&dates=${dates}&travelers=${travelers}`);
-    }
-  };
 
   const handleAiPromptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,14 +188,10 @@ const HomePage = () => {
           <Card className="max-w-6xl mx-auto border shadow-md">
             <CardContent className="p-4">
               <Tabs defaultValue="ai" className="w-full">
-                <TabsList className="grid grid-cols-2 mb-9">
+                <TabsList className="grid grid-cols-1 mb-9">
                   <TabsTrigger value="ai">
                     <Bot className="mr-2 h-4 w-4" />
                     AI Planner
-                  </TabsTrigger>
-                  <TabsTrigger value="search">
-                    <Search className="mr-2 h-4 w-4" />
-                    Traditional Search
                   </TabsTrigger>
                 </TabsList>
 
@@ -221,7 +209,7 @@ const HomePage = () => {
                         onChange={(e) => setAiPrompt(e.target.value)}
                       />
                     </div> */}
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mb-4">
                       <Badge variant="outline" className="cursor-pointer hover:bg-muted" onClick={() => setAiPrompt("I want a relaxing beach vacation with luxury accommodations")}>
                         Luxury Beach
                       </Badge>
@@ -235,6 +223,13 @@ const HomePage = () => {
                         Cultural Budget
                       </Badge>
                     </div>
+                    {/* <Button 
+                      className="w-full bg-raspberry hover:bg-raspberry/90"
+                      onClick={() => navigate('/waitlist')}
+                    >
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Join Waitlist to Access AI Planner
+                    </Button> */}
                   </form>
                 </TabsContent>
 
@@ -250,9 +245,9 @@ const HomePage = () => {
                     </div>
                     
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                      <Button size="lg" className="bg-raspberry hover:bg-raspberry/90">
+                      <Button size="lg" className="bg-raspberry hover:bg-raspberry/90" onClick={() => navigate('/waitlist')}>
                         <Sparkles className="mr-2 h-5 w-5" />
-                        Start Planning Now with AI
+                        Let's Start the journey?
                       </Button>
                       <Button className="cursor-pointer" variant="outline" size="lg">
                         Learn How It Works
@@ -261,46 +256,7 @@ const HomePage = () => {
                   </div>
                 </div>
 
-                <TabsContent value="search" className="space-y-4">
-                  <form onSubmit={handleSearchSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="relative">
-                        <MapPin className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          placeholder="Where would you like to go?"
-                          className="pl-10 h-12 text-base"
-                          value={destination}
-                          onChange={(e) => setDestination(e.target.value)}
-                        />
-                      </div>
-                      {/* <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          placeholder="When? (e.g., Oct 15-22)"
-                          className="pl-10 h-12 text-base"
-                          value={dates}
-                          onChange={(e) => setDates(e.target.value)}
-                        />
-                      </div> */} 
-                       
-                        {/* calender icon -implent shadcn */}
 
-                    </div>
-                    <div className="relative">
-                      <Users className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        placeholder="Number of travelers"
-                        className="pl-10 h-12 text-base"
-                        value={travelers}
-                        onChange={(e) => setTravelers(e.target.value)}
-                      />
-                    </div>
-                    <Button type="submit" className="w-full h-12 text-base bg-raspberry hover:bg-raspberry/90">
-                      <Search className="mr-2 h-5 w-5" />
-                      Search Destinations
-                    </Button>
-                  </form>
-                </TabsContent>
               </Tabs>
             </CardContent>
           </Card>
@@ -424,10 +380,10 @@ const HomePage = () => {
           </div>
 
           <div className="flex justify-center mt-8">
-            <Button className="bg-raspberry hover:bg-raspberry/90" size="lg">
+            {/* <Button className="bg-raspberry hover:bg-raspberry/90" size="lg">
               <Bot className="mr-2 h-5 w-5" />
               Try AI Planning Now
-            </Button>
+            </Button> */}
           </div>
         </div>
       </div>
@@ -454,11 +410,26 @@ const HomePage = () => {
                 <h3 className="text-xl font-medium">{insight.title}</h3>
                 <p className="text-muted-foreground">{insight.description}</p>
               </CardContent>
-              <CardFooter className="pt-0 pb-6 px-6">
+
+
+              {/* <CardFooter className="pt-0 pb-6 px-6">
                 <Button variant="ghost" className="p-0 h-auto text-raspberry hover:text-raspberry/80">
                   Read full analysis <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
+              </CardFooter> */}
+
+              <CardFooter className="pt-0 pb-6 px-6">
+                <Button 
+                  variant="ghost" 
+                  className="p-0 h-auto text-raspberry hover:text-raspberry/80"
+                  onClick={() => window.open(insight.url, '_blank')}
+                >
+                  Read full analysis <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
               </CardFooter>
+
+
+              
             </Card>
           ))}
         </div>
