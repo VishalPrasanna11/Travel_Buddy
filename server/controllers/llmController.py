@@ -160,8 +160,19 @@ class LLMController:
                 context += f"{role_prefix}{message.content}\n\n"
         
         try:
-            logger.info(f"Invoking agent with query: {actual_query}")
-            agent_input = f"Chat History:\n{context}\n\nCurrent Query: {actual_query}" if context else actual_query
+            # For weather queries, we want to focus only on the current query, not the entire chat history
+            is_weather_query = any(
+                term in actual_query.lower() for term in ["weather", "forecast", "temperature", "rain", "sunny", "cloudy", "hot", "cold"]
+            )
+            
+            if is_weather_query:
+                # For weather queries, use only the current query without history
+                logger.info(f"Detected potential weather query, using only current query: {actual_query}")
+                agent_input = actual_query
+            else:
+                # For other queries, include chat history as context
+                logger.info(f"Using full context with chat history for non-weather query")
+                agent_input = f"Chat History:\n{context}\n\nCurrent Query: {actual_query}" if context else actual_query
 
             # ✅ Validate sub-agents before call
             for sa in getattr(root_agent, "sub_agents", []):
@@ -171,7 +182,10 @@ class LLMController:
             agent_response = await root_agent.ainvoke({"input": agent_input})
             logger.info(f"Agent response: {agent_response}")
             answer = agent_response.get("output", "I couldn't process your request at this time.")
-            
+
+            # Log the agent's response for debugging
+            logger.info(f"Agent response: {answer[:100]}...")  # Log first 100 chars
+
             # Build the final response with API data if available
             response = {
                 "status": "success",
@@ -196,6 +210,7 @@ class LLMController:
             
             return response
             
+
         except Exception as e:
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=f"Error when calling agent: {str(e)}")

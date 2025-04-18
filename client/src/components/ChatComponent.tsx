@@ -4,6 +4,7 @@ import { ChatContainer } from '@/components/ui/chat';
 import { ChatForm } from '@/components/ui/chat';
 import { MessageInput } from '@/components/ui/message-input';
 import { ThumbsUp, ThumbsDown, MapPin } from 'lucide-react';
+import WeatherDisplay from './WeatherDisplay';
 import { useLocation, Location } from './LocationContext';
 
 // Define props including the location detection callback
@@ -227,7 +228,10 @@ export default function ChatComponent({
                     {/* Message text */}
                     <div className="text-sm prose prose-sm max-w-none">
                       {message.role === "assistant" ? (
-                        <div dangerouslySetInnerHTML={{ __html: convertMarkdownToHTML(message.content) }} />
+                        <>
+                          <WeatherDisplay content={message.content} />
+                          <div dangerouslySetInnerHTML={{ __html: convertMarkdownToHTML(message.content) }} />
+                        </>
                       ) : (
                         <p>{message.content}</p>
                       )}

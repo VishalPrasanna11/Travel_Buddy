@@ -8,6 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 // import { SignInDialog } from "@/components/SignInDialog";
 import { StepsSection } from "@/components/StepsSection";
 import { UseCaseMindmap } from "@/components/UseCaseMindmap";
+import { useAuth0 } from "@auth0/auth0-react";
+
 
 // Features and testimonials arrays remain the same as in previous code...
 
@@ -69,7 +71,7 @@ const LandingPage = () => {
                 <Button 
                   variant="outline" 
                   size="lg"
-                  onClick={() => navigate("/how-it-works")}
+                  onClick={() => window.open("https://github.com/DAMG7245/Travel_Buddy", "_blank")}
                 >
                   How It Works
                 </Button>

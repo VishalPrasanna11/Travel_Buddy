@@ -11,7 +11,12 @@ from miniagents.Flight.agent import flight_search_agent, format_flight_results
 from miniagents.Hotels.agent import hotel_search_agent, format_hotel_results
 from miniagents.Restaurants.agent import restaurant_search_agent, format_restaurant_results
 from miniagents.Attractions.agent import attractions_search_agent, format_attractions_results
+
+# from miniagents.Itinerary.agent import itinerary_agent, format_itinerary_results
+
+
 from miniagents.Itinerary.agent import itinerary_agent
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -26,6 +31,7 @@ class PlanningAgentState(TypedDict):
     tools: List[Dict[str, Any]]
     tool_names: List[str]
     last_tool_call_ids: List[str]
+    weather_data: Dict[str, Any]
 
 # ------------------ LLM ------------------ #
 base_llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
@@ -97,7 +103,7 @@ def preprocess_restaurant_query(user_input: str) -> str:
     ]
     response = base_llm.invoke(messages)
     result = response.content.strip()
-    logger.info(f"🧠 Restaurant Query Preprocessed Output: {result}")
+    logger.info(f" Restaurant Query Preprocessed Output: {result}")
     return result
 
 def preprocess_attractions_query(user_input: str) -> str:
@@ -119,7 +125,7 @@ def preprocess_attractions_query(user_input: str) -> str:
     ]
     response = base_llm.invoke(messages)
     result = response.content.strip()
-    logger.info(f"🧠 Attractions Query Preprocessed Output: {result}")
+    logger.info(f" Attractions Query Preprocessed Output: {result}")
     return result
 
 # ------------------ Tool Schema ------------------ #
@@ -187,7 +193,7 @@ tool_funcs = {
     "hotel_search_agent": hotel_search_agent,
     "restaurant_search_agent": restaurant_search_agent,
     "attractions_search_agent": attractions_search_agent,
-    "itinerary_agent": itinerary_agent
+    # "itinerary_agent": itinerary_agent
     
 }
 
@@ -195,6 +201,8 @@ tool_funcs = {
 def planning_agent_node(state: PlanningAgentState) -> PlanningAgentState:
     """Process the user input and determine what tools to call"""
     system_message = """You are a comprehensive travel assistant who can help with flights, hotels, restaurants, and attractions.
+    
+    If weather data is provided, incorporate it into your recommendations and advice.
 
 Use `flight_search_agent` to search for flights. Examples:
 - "Find flights from Boston to Tokyo on May 15" 
@@ -527,12 +535,20 @@ class PlanningAgent:
     def invoke(self, inputs: Dict[str, str]) -> Dict[str, str]:
         """Synchronous invocation of the agent"""
         user_input = inputs.get("input", "")
+        weather_data = inputs.get("weather_data", {})
+        
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
             "tools": [],
             "tool_names": [],
-            "last_tool_call_ids": []
+            "last_tool_call_ids": [],
+            "weather_data": weather_data
         }
+        
+        # Add weather data to the prompt if available
+        if weather_data and weather_data.get("report"):
+            weather_info = f"\n\nCurrent weather information: {weather_data.get('report')}"
+            initial_state["messages"].append(SystemMessage(content=weather_info))
         final_state = self.graph.invoke(initial_state, config={"recursion_limit": 10})
 
         # Process the final state to extract the response
@@ -567,12 +583,23 @@ class PlanningAgent:
         """Asynchronous invocation of the agent"""
         logger.info(f"🔍 ainvoke called with inputs: {inputs}")
         user_input = inputs.get("input", "")
+        weather_data = inputs.get("weather_data", {})
+        
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
             "tools": [],
             "tool_names": [],
-            "last_tool_call_ids": []
+            "last_tool_call_ids": [],
+            "weather_data": weather_data
         }
+
+        
+        # Add weather data to the prompt if available
+        if weather_data and weather_data.get("report"):
+            weather_info = f"\n\nCurrent weather information: {weather_data.get('report')}"
+            initial_state["messages"].append(SystemMessage(content=weather_info))
+        final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})
+
         
         # Initialize response with default structure and status
         response = {

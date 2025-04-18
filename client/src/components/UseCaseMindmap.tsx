@@ -23,7 +23,7 @@ export function UseCaseMindmap() {
       title: "Accommodation Finder",
       description: "Discover perfect places to stay that match your preferences and budget",
       color: "bg-amber text-foreground",
-      position: { x: 120, y: -100 }
+      position: { x: 210, y: -100 }
     },
     {
       id: "food",
@@ -31,7 +31,7 @@ export function UseCaseMindmap() {
       title: "Dining Recommendations",
       description: "Find local restaurants and cuisine based on your dietary preferences",
       color: "bg-leaf-green text-foreground",
-      position: { x: 120, y: 90 }
+      position: { x: 160, y: 90 }
     },
     {
       id: "activities",
@@ -46,8 +46,8 @@ export function UseCaseMindmap() {
       icon: <MapPin className="h-6 w-6" />,
       title: "Local Insights",
       description: "Get insider tips and cultural information about your destination",
-      color: "bg-raspberry/80 text-white",
-      position: { x: -160, y: 90 }
+      color: "bg-raspberry/80 text-foreground",
+      position: { x: -200, y: 90 }
     },
     {
       id: "planning",
@@ -55,7 +55,7 @@ export function UseCaseMindmap() {
       title: "Trip Planning",
       description: "Organize your travel schedule with day-by-day planning assistance",
       color: "bg-amber/80 text-foreground",
-      position: { x: -140, y: -90 }
+      position: { x: -210, y: -90 }
     }
   ];
 
