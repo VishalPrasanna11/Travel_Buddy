@@ -108,7 +108,7 @@
 7. **Response Delivery** – Final results returned via API/UI as structured JSON .
 
 ---   
-## 🧩 Microservices & APIs
+##  Microservices & APIs
 
 | Service              | Purpose                              | Example Endpoint                          |
 |----------------------|---------------------------------------|-------------------------------------------|
@@ -123,7 +123,7 @@
 
 
 
-## 🛠 Technology Stack
+##  Technology Stack
 
 ### Backend
 - ![Python](https://img.shields.io/badge/Python-FFD43B?style=flat&logo=python&logoColor=blue)
@@ -296,8 +296,8 @@ docker-compose up
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - Flight Service API: http://localhost:8001
-
-## Project Structure
+```
+Project Structure
 
 Travel_Buddy/
 ├── client/                     # Frontend React application
@@ -341,7 +341,7 @@ Travel_Buddy/
 ├── .env                        # Project environment variables
 ├── docker-compose.yaml         # Docker configuration
 └── README.md                   # Project documentation
-
+```
 ##  Notes
 
 1. **Weather MCP Server**
