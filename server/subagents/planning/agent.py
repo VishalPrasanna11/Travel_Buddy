@@ -11,10 +11,6 @@ from miniagents.Flight.agent import flight_search_agent, format_flight_results
 from miniagents.Hotels.agent import hotel_search_agent, format_hotel_results
 from miniagents.Restaurants.agent import restaurant_search_agent, format_restaurant_results
 from miniagents.Attractions.agent import attractions_search_agent, format_attractions_results
-
-# from miniagents.Itinerary.agent import itinerary_agent, format_itinerary_results
-
-
 from miniagents.Itinerary.agent import itinerary_agent
 
 # Set up logging
@@ -31,7 +27,6 @@ class PlanningAgentState(TypedDict):
     tools: List[Dict[str, Any]]
     tool_names: List[str]
     last_tool_call_ids: List[str]
-    weather_data: Dict[str, Any]
 
 # ------------------ LLM ------------------ #
 base_llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
@@ -103,7 +98,7 @@ def preprocess_restaurant_query(user_input: str) -> str:
     ]
     response = base_llm.invoke(messages)
     result = response.content.strip()
-    logger.info(f" Restaurant Query Preprocessed Output: {result}")
+    logger.info(f"🧠 Restaurant Query Preprocessed Output: {result}")
     return result
 
 def preprocess_attractions_query(user_input: str) -> str:
@@ -125,7 +120,35 @@ def preprocess_attractions_query(user_input: str) -> str:
     ]
     response = base_llm.invoke(messages)
     result = response.content.strip()
-    logger.info(f" Attractions Query Preprocessed Output: {result}")
+    logger.info(f"🧠 Attractions Query Preprocessed Output: {result}")
+    return result
+
+def preprocess_itinerary_query(user_input: str) -> str:
+    """Use LLM to convert natural language to structured itinerary query"""
+    system_prompt = """
+    You are an itinerary query parser. Extract travel planning information from the user input 
+    and format it as:
+    destination=CityName&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&origin=OriginCity&travelers=NumberOfTravelers
+    
+    If interests or activities are mentioned, include them as: &interests=Interest1,Interest2,Interest3
+    
+    Examples:
+    - "Plan a trip to Paris from May 10 to May 15, 2025 from New York with 2 travelers" -> 
+      "destination=Paris&startDate=2025-05-10&endDate=2025-05-15&origin=New York&travelers=2"
+    - "I want to visit Tokyo for a week starting June 1, 2025. I'm interested in museums, food, and technology" ->
+      "destination=Tokyo&startDate=2025-06-01&endDate=2025-06-08&interests=museums,food,technology"
+    
+    Format dates as YYYY-MM-DD. If the user doesn't specify a year, use 2025.
+    For trip duration, if the user mentions "for X days" or "for a week", calculate the end date accordingly.
+    Only output the formatted string, nothing else.
+    """
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_input)
+    ]
+    response = base_llm.invoke(messages)
+    result = response.content.strip()
+    logger.info(f"🧠 Itinerary Query Preprocessed Output: {result}")
     return result
 
 # ------------------ Tool Schema ------------------ #
@@ -185,6 +208,20 @@ tools = [
                 "required": ["input_str"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "itinerary_agent",
+            "description": "Create a comprehensive travel itinerary including flights, hotels, attractions, and restaurants for a specific destination and date range.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "input_str": {"type": "string"}
+                },
+                "required": ["input_str"]
+            }
+        }
     }
 ]
 
@@ -193,16 +230,13 @@ tool_funcs = {
     "hotel_search_agent": hotel_search_agent,
     "restaurant_search_agent": restaurant_search_agent,
     "attractions_search_agent": attractions_search_agent,
-    # "itinerary_agent": itinerary_agent
-    
+    "itinerary_agent": itinerary_agent
 }
 
 # ------------------ Agent Node ------------------ #
 def planning_agent_node(state: PlanningAgentState) -> PlanningAgentState:
     """Process the user input and determine what tools to call"""
-    system_message = """You are a comprehensive travel assistant who can help with flights, hotels, restaurants, and attractions.
-    
-    If weather data is provided, incorporate it into your recommendations and advice.
+    system_message = """You are a comprehensive travel assistant who can help with flights, hotels, restaurants, attractions, and complete travel itineraries.
 
 Use `flight_search_agent` to search for flights. Examples:
 - "Find flights from Boston to Tokyo on May 15" 
@@ -220,8 +254,16 @@ Use `attractions_search_agent` to find tourist attractions. Examples:
 - "What are some museums in Paris?"
 - "location=Paris&attraction_type=museums"
 
+Use `itinerary_agent` to create complete travel plans. Examples:
+- "Plan a 5-day trip to Rome from New York in June 2025"
+- "destination=Rome&startDate=2025-06-10&endDate=2025-06-15&origin=New York&travelers=2"
+
+IMPORTANT: All date parameters must use years 2025 or later only.
+
 Based on the query, determine which tool(s) to use and respond appropriately.
 Return results cleanly and clearly.
+
+For itinerary requests, you should first ask if you should create a complete travel plan that includes flights, hotels, attractions, and day-by-day scheduling if the request is ambiguous.
 """
 
     formatted_messages = [SystemMessage(content=system_message)] + state["messages"]
@@ -325,6 +367,18 @@ def natural_language_attractions_search_agent(input_str: str) -> Dict[str, Any]:
         logger.error(traceback.format_exc())
         return {"error": f"Error processing attractions query: {str(e)}"}
 
+def natural_language_itinerary_agent(input_str: str) -> Dict[str, Any]:
+    """Handle natural language input for itinerary creation by preprocessing with LLM"""
+    try:
+        # Use LLM to convert natural language to structured format
+        structured_query = preprocess_itinerary_query(input_str)
+        # Pass the structured query to the itinerary agent
+        return itinerary_agent(input_str=structured_query)
+    except Exception as e:
+        logger.error(f"❌ Itinerary Natural Language Processing Error: {e}")
+        logger.error(traceback.format_exc())
+        return {"error": f"Error processing itinerary query: {str(e)}"}
+
 # ------------------ Execute Tool Function ------------------ #
 def execute_tool(tool_func, state: PlanningAgentState, tool_key: str) -> PlanningAgentState:
     """Execute the tool with extracted arguments"""
@@ -396,6 +450,15 @@ def execute_tool(tool_func, state: PlanningAgentState, tool_key: str) -> Plannin
                         # Handle structured input directly
                         result = tool_func(**args)
                 
+                elif tool_key == "itinerary_agent":
+                    # For itinerary creation
+                    if not input_str.startswith("destination="):
+                        # Handle natural language input
+                        result = natural_language_itinerary_agent(input_str)
+                    else:
+                        # Handle structured input directly
+                        result = tool_func(**args)
+                
                 else:
                     # Unknown tool
                     result = {"error": f"Unknown tool: {tool_key}"}
@@ -440,10 +503,10 @@ def execute_tool(tool_func, state: PlanningAgentState, tool_key: str) -> Plannin
                             result["status"] = "success"
                         
                         # Ensure api_data exists for data flow
-                        if "api_data" not in result and any(k in result for k in ["flight", "flights", "hotels", "restaurants", "attractions"]):
+                        if "api_data" not in result and any(k in result for k in ["flight", "flights", "hotels", "restaurants", "attractions", "itinerary"]):
                             result["api_data"] = {}
                             # Copy data to api_data for consistent structure
-                            for data_key in ["flight", "flights", "hotels", "restaurants", "attractions"]:
+                            for data_key in ["flight", "flights", "hotels", "restaurants", "attractions", "itinerary"]:
                                 if data_key in result:
                                     result["api_data"][data_key] = result[data_key]
                     
@@ -472,6 +535,7 @@ def execute_tool(tool_func, state: PlanningAgentState, tool_key: str) -> Plannin
                 )
     
     return state
+
 # ------------------ Graph Flow Control ------------------ #
 def should_continue(state: PlanningAgentState) -> str:
     """Determine the next step based on tool calls"""
@@ -487,6 +551,8 @@ def should_continue(state: PlanningAgentState) -> str:
         return "execute_restaurant"
     elif tool_name == "attractions_search_agent":
         return "execute_attractions"
+    elif tool_name == "itinerary_agent":
+        return "execute_itinerary"
     else:
         return "end"
 
@@ -501,6 +567,7 @@ def build_planning_agent_graph():
     workflow.add_node("execute_hotel", lambda s: execute_tool(hotel_search_agent, s, "hotel_search_agent"))
     workflow.add_node("execute_restaurant", lambda s: execute_tool(restaurant_search_agent, s, "restaurant_search_agent"))
     workflow.add_node("execute_attractions", lambda s: execute_tool(attractions_search_agent, s, "attractions_search_agent"))
+    workflow.add_node("execute_itinerary", lambda s: execute_tool(itinerary_agent, s, "itinerary_agent"))
     
     # Set entry point
     workflow.set_entry_point("agent")
@@ -514,6 +581,7 @@ def build_planning_agent_graph():
             "execute_hotel": "execute_hotel",
             "execute_restaurant": "execute_restaurant",
             "execute_attractions": "execute_attractions",
+            "execute_itinerary": "execute_itinerary",
             "end": END
         }
     )
@@ -523,6 +591,7 @@ def build_planning_agent_graph():
     workflow.add_edge("execute_hotel", "agent")
     workflow.add_edge("execute_restaurant", "agent")
     workflow.add_edge("execute_attractions", "agent")
+    workflow.add_edge("execute_itinerary", "agent")
     
     return workflow.compile()
 
@@ -535,20 +604,12 @@ class PlanningAgent:
     def invoke(self, inputs: Dict[str, str]) -> Dict[str, str]:
         """Synchronous invocation of the agent"""
         user_input = inputs.get("input", "")
-        weather_data = inputs.get("weather_data", {})
-        
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
             "tools": [],
             "tool_names": [],
-            "last_tool_call_ids": [],
-            "weather_data": weather_data
+            "last_tool_call_ids": []
         }
-        
-        # Add weather data to the prompt if available
-        if weather_data and weather_data.get("report"):
-            weather_info = f"\n\nCurrent weather information: {weather_data.get('report')}"
-            initial_state["messages"].append(SystemMessage(content=weather_info))
         final_state = self.graph.invoke(initial_state, config={"recursion_limit": 10})
 
         # Process the final state to extract the response
@@ -568,6 +629,8 @@ class PlanningAgent:
                         return {"output": format_restaurant_results(parsed)}
                     elif "attractions" in parsed:
                         return {"output": format_attractions_results(parsed)}
+                    elif "itinerary" in parsed:
+                        return {"output": parsed.get("formatted_text", json.dumps(parsed.get("itinerary", {})))}
                     else:
                         return {"output": f"✅ Results: {parsed}"}
                 except Exception as e:
@@ -583,23 +646,12 @@ class PlanningAgent:
         """Asynchronous invocation of the agent"""
         logger.info(f"🔍 ainvoke called with inputs: {inputs}")
         user_input = inputs.get("input", "")
-        weather_data = inputs.get("weather_data", {})
-        
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
             "tools": [],
             "tool_names": [],
-            "last_tool_call_ids": [],
-            "weather_data": weather_data
+            "last_tool_call_ids": []
         }
-
-        
-        # Add weather data to the prompt if available
-        if weather_data and weather_data.get("report"):
-            weather_info = f"\n\nCurrent weather information: {weather_data.get('report')}"
-            initial_state["messages"].append(SystemMessage(content=weather_info))
-        final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})
-
         
         # Initialize response with default structure and status
         response = {
@@ -634,12 +686,13 @@ class PlanningAgent:
                             response["api_data"] = parsed_content["api_data"]
                             logger.info(f"🔍 Set api_data in response")
                         
-                        # Also check for restaurants directly at the top level
-                        if "restaurants" in parsed_content:
-                            logger.info(f"🔍 Found restaurants at top level of tool message")
-                            if "restaurants" not in response["api_data"]:
-                                response["api_data"]["restaurants"] = parsed_content["restaurants"]
-                                logger.info(f"🔍 Added top-level restaurants to api_data")
+                        # Also check for specific data directly at the top level
+                        for data_key in ["restaurants", "attractions", "hotels", "flight", "itinerary"]:
+                            if data_key in parsed_content:
+                                logger.info(f"🔍 Found {data_key} at top level of tool message")
+                                if data_key not in response["api_data"]:
+                                    response["api_data"][data_key] = parsed_content[data_key]
+                                    logger.info(f"🔍 Added top-level {data_key} to api_data")
                         
                         # Set formatted text as output if available
                         if "formatted_text" in parsed_content:
@@ -661,10 +714,11 @@ class PlanningAgent:
                     response["output"] = msg.content
                     logger.info(f"🔍 Set AI message as output")
             
-            # Final check to ensure we have restaurant data
-            if "api_data" in response and not response["api_data"] and "restaurants" in response:
-                response["api_data"]["restaurants"] = response["restaurants"]
-                logger.info(f"🔍 Final check: copied top-level restaurants to api_data")
+            # Final check to ensure we have all data
+            for data_key in ["restaurants", "attractions", "hotels", "flight", "itinerary"]:
+                if "api_data" in response and data_key not in response["api_data"] and data_key in response:
+                    response["api_data"][data_key] = response[data_key]
+                    logger.info(f"🔍 Final check: copied top-level {data_key} to api_data")
             
             # Print the final response structure
             logger.info(f"✅ Final response structure: {json.dumps(response, default=str)[:500]}...")
@@ -682,5 +736,7 @@ class PlanningAgent:
                     "error": str(e),
                     "status": "error"
                 }
-            }# ✅ Instantiate
+            }
+
+# ✅ Instantiate
 agent = PlanningAgent()

@@ -21,7 +21,7 @@ load_dotenv()
 class WeatherTool:
     def __init__(self, mcp_server_path=None):
         # Path to the MCP server
-        self.mcp_server_path = mcp_server_path or "/Users/lohith/Documents/VPProjects/fork-Travel_Buddy/Travel_Buddy/weekly-weather-mcp-master/simplified_mcp_server.py"
+        self.mcp_server_path = mcp_server_path or "/Users/vishalp/Documents/MSIS/3rd Sem/DAMG7245/final_project/DAMG_Travel_Buddy/weekly-weather-mcp-master/simplified_mcp_server.py"
         self.process = None
         
     def start_server(self):

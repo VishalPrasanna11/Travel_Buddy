@@ -24,3 +24,4 @@ langsmith>=0.3.31
 langchain-community>=0.3.21
 langchain-google-community>=2.0.7
 langgraph>=0.3.30
+snowflake

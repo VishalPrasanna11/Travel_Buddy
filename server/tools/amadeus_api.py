@@ -124,6 +124,9 @@ def perform_flight_search_api(params: Dict[str, str]) -> Dict[str, Any]:
         destination = get_iata_code(params["to"], token)
         adults = int(params.get("adults", "1") or 1)
         is_one_way = not params.get("returnDate")
+        
+        # Fixed max_results to exactly 5, no user input
+        max_results = 5
 
         body = {
             "currencyCode": "USD",
@@ -140,7 +143,7 @@ def perform_flight_search_api(params: Dict[str, str]) -> Dict[str, Any]:
             "travelers": [{"id": str(i), "travelerType": "ADULT"} for i in range(1, adults + 1)],
             "sources": ["GDS"],
             "searchCriteria": {
-                "maxFlightOffers": 5,
+                "maxFlightOffers": max_results,
                 "flightFilters": {
                     "cabinRestrictions": [
                         {
@@ -190,5 +193,4 @@ def perform_flight_search_api(params: Dict[str, str]) -> Dict[str, Any]:
         return {"flight": response.json()}
 
     except Exception as e:
-        logger.error(f"❌ perform_flight_search_api failed: {e}")
         return {"error": f"Flight search failed: {str(e)}"}
