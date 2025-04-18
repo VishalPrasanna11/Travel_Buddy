@@ -16,9 +16,11 @@
 
 ## Project URLs
 - Code Labs: [Codelabs Documentation](https://codelabs-preview.appspot.com/?file_id=1tutswOpFN6G73kNlOOBUUXkxT-XiGBHQ0f_FO67wKHs#0)
-- Application: [Front End]()
+- Application: [Front End](https://travelai.me/)
 - Swagger: [Swagger](http://34.45.163.161:8000/docs)
 - Airflow: [Airflow](http://159.89.95.178:8080/home)
+- Live Demo : [Travel AI](https://travelai.me/)
+- Walkthrough Video : [Application Walkthrough](https://drive.google.com/drive/folders/1898HGutXjQIxwx3OVnr_Yvx9Uq_SKAE1?usp=sharing)
 - Github Tasks: [GitHub Issues and Tasks](https://github.com/DAMG7245/Travel_Buddy/issues?q=is%3Aissue%20state%3Aclosed&page=1)
 ---
 
@@ -110,11 +112,6 @@
 
 ![image](https://github.com/user-attachments/assets/86233095-7990-4194-9c4f-5303fce3bd28)
 
-## Live Demo
-https://travelai.me/
-
-## CodeLabs
-https://drive.google.com/drive/folders/1898HGutXjQIxwx3OVnr_Yvx9Uq_SKAE1?usp=sharing
 
 ##  Data Pipeline
 
