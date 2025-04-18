@@ -375,4 +375,7 @@ Travel_Buddy/
 MIT License – Feel free to fork, extend, and build upon TravelBuddy.
 
 ---
+## 🤖 AI Usage Disclosure
+
+AI tools such as OpenAI GPT, LangChain, and GitHub Copilot were used for implementing multi-agent travel assistance, generating responses, and supporting development tasks like code scaffolding and prompt tuning.
 
