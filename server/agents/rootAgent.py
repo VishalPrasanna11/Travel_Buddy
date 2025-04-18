@@ -3,7 +3,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-
+# At the top of rootAgent.py, add:
+import json
 import agents.prompt as prompt
 from subagents.explore.agent import agent as explore_agent
 from subagents.pre_travel.agent import PreTripAgent
@@ -165,11 +166,133 @@ class Agent:
             "itinerary": {}
         }
         final_state = await self.model.ainvoke(initial_state, config={"configurable": {"thread_id": conversation_id}})
+        
+        # Initialize response with default values and status
+        response = {
+            "output": "No response generated.",
+            "status": "success"  # Default to success
+        }
+        
         if final_state["messages"]:
-            return {"output": final_state["messages"][-1]["content"]}
-        return {"output": "No response generated."}
-
-
+            # Get the text output for human readability
+            response["output"] = final_state["messages"][-1]["content"]
+            
+            # Look for API data in agent_scratchpad
+            for note in final_state.get("agent_scratchpad", []):
+                if note.get("agent") == "planning":
+                    # Check if the output contains structured API data
+                    output = note.get("output", {})
+                    
+                    # Check for error status first
+                    if isinstance(output, dict) and ("status" in output and output["status"] == "error" or "error" in output):
+                        # Handle error case
+                        response["status"] = "error"
+                        response["error_message"] = output.get("error_message", output.get("error", "Unknown error"))
+                        
+                        # If there's api_data with error info, include it
+                        if "api_data" in output and isinstance(output["api_data"], dict):
+                            response["api_data"] = output["api_data"]
+                        else:
+                            # Create api_data with error info
+                            response["api_data"] = {
+                                "error": response["error_message"],
+                                "status": "error"
+                            }
+                        
+                        # Add error to top level
+                        response["error"] = response["error_message"]
+                        
+                        # Return early on error
+                        return response
+                    
+                    # Handle different output formats for success cases
+                    if isinstance(output, dict):
+                        # If output already contains api_data
+                        if "api_data" in output:
+                            response["api_data"] = output["api_data"]
+                            
+                            # Check for nested error
+                            if isinstance(response["api_data"], dict) and "error" in response["api_data"]:
+                                response["status"] = "error"
+                                response["error_message"] = response["api_data"]["error"]
+                                response["error"] = response["api_data"]["error"]
+                            
+                            # Also add individual data types to top level
+                            for data_type, data in output["api_data"].items():
+                                # Don't copy error or status to top level
+                                if data_type not in ["error", "status"]:
+                                    response[data_type] = data
+                                
+                        # Copy status if present
+                        if "status" in output:
+                            response["status"] = output["status"]
+                                
+                        # For backwards compatibility, check for direct data types
+                        for data_type in ["flights", "hotels", "restaurants", "attractions"]:
+                            if data_type in output:
+                                if "api_data" not in response:
+                                    response["api_data"] = {}
+                                response["api_data"][data_type] = output[data_type]
+                                response[data_type] = output[data_type]
+                    
+                    # Try to parse string outputs (might be JSON)
+                    elif isinstance(output, str):
+                        try:
+                            parsed = json.loads(output)
+                            if isinstance(parsed, dict):
+                                # Check for error in parsed JSON
+                                if "error" in parsed or ("status" in parsed and parsed["status"] == "error"):
+                                    response["status"] = "error"
+                                    response["error_message"] = parsed.get("error_message", parsed.get("error", "Unknown error"))
+                                    response["error"] = response["error_message"]
+                                    
+                                    # Add api_data for error
+                                    if "api_data" in parsed:
+                                        response["api_data"] = parsed["api_data"]
+                                    else:
+                                        response["api_data"] = {
+                                            "error": response["error_message"],
+                                            "status": "error"
+                                        }
+                                    
+                                    # Return early on error
+                                    return response
+                                
+                                # Extract API data if present for success case
+                                if "api_data" in parsed:
+                                    response["api_data"] = parsed["api_data"]
+                                    
+                                    # Add individual data types to top level
+                                    for data_type, data in parsed["api_data"].items():
+                                        if data_type not in ["error", "status"]:
+                                            response[data_type] = data
+                                
+                                # For backwards compatibility
+                                for data_type in ["flights", "hotels", "restaurants", "attractions"]:
+                                    if data_type in parsed:
+                                        if "api_data" not in response:
+                                            response["api_data"] = {}
+                                        response["api_data"][data_type] = parsed[data_type]
+                                        response[data_type] = parsed[data_type]
+                                
+                                # Copy status if present
+                                if "status" in parsed:
+                                    response["status"] = parsed["status"]
+                        except Exception as e:
+                            # Log parsing error but don't change response
+                            print(f"Error parsing JSON from string output: {str(e)}")
+                            # Not valid JSON, continue
+                            pass
+        
+        # Final check to ensure api_data exists if we have data types
+        has_data_types = any(k in response for k in ["flights", "hotels", "restaurants", "attractions"])
+        if has_data_types and "api_data" not in response:
+            response["api_data"] = {}
+            for data_type in ["flights", "hotels", "restaurants", "attractions"]:
+                if data_type in response:
+                    response["api_data"][data_type] = response[data_type]
+        
+        return response
 travel_agent_graph = build_travel_agent_graph()
 
 root_agent = Agent(

@@ -11,8 +11,7 @@ from miniagents.Flight.agent import flight_search_agent, format_flight_results
 from miniagents.Hotels.agent import hotel_search_agent, format_hotel_results
 from miniagents.Restaurants.agent import restaurant_search_agent, format_restaurant_results
 from miniagents.Attractions.agent import attractions_search_agent, format_attractions_results
-from miniagents.Itinerary.agent import itinerary_agent, format_itinerary_results
-
+from miniagents.Itinerary.agent import itinerary_agent
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -393,17 +392,78 @@ def execute_tool(tool_func, state: PlanningAgentState, tool_key: str) -> Plannin
                     # Unknown tool
                     result = {"error": f"Unknown tool: {tool_key}"}
                 
-                logger.info(f"✅ Tool returned: {result}")
-                state["messages"].append(
-                    ToolMessage(tool_call_id=call["id"], content=json.dumps(result))
-                )
+                # Check for and handle errors properly
+                if isinstance(result, dict) and "error" in result:
+                    error_message = result["error"]
+                    logger.warning(f"⚠️ Tool returned an error: {error_message}")
+                    
+                    # Ensure consistent structure for error responses
+                    standardized_error = {
+                        "error": error_message,
+                        "formatted_text": result.get("formatted_text", f"Error: {error_message}"),
+                        "status": "error"
+                    }
+                    
+                    # Ensure api_data is present and properly structured
+                    if "api_data" not in result:
+                        standardized_error["api_data"] = {
+                            "error": error_message,
+                            "status": "error"
+                        }
+                    else:
+                        standardized_error["api_data"] = result["api_data"]
+                        # Ensure error info exists in api_data
+                        if "error" not in standardized_error["api_data"]:
+                            standardized_error["api_data"]["error"] = error_message
+                            standardized_error["api_data"]["status"] = "error"
+                    
+                    logger.info(f"🚨 Sending standardized error response: {standardized_error}")
+                    state["messages"].append(
+                        ToolMessage(tool_call_id=call["id"], content=json.dumps(standardized_error))
+                    )
+                else:
+                    # Handle successful responses
+                    logger.info(f"✅ Tool returned: {result}")
+                    
+                    # Ensure all successful responses have a consistent structure
+                    if isinstance(result, dict):
+                        # Add status field if not present
+                        if "status" not in result:
+                            result["status"] = "success"
+                        
+                        # Ensure api_data exists for data flow
+                        if "api_data" not in result and any(k in result for k in ["flight", "flights", "hotels", "restaurants", "attractions"]):
+                            result["api_data"] = {}
+                            # Copy data to api_data for consistent structure
+                            for data_key in ["flight", "flights", "hotels", "restaurants", "attractions"]:
+                                if data_key in result:
+                                    result["api_data"][data_key] = result[data_key]
+                    
+                    state["messages"].append(
+                        ToolMessage(tool_call_id=call["id"], content=json.dumps(result))
+                    )
+                    
             except Exception as e:
                 logger.error(f"❌ Tool execution error: {str(e)}")
+                logger.error(traceback.format_exc())
+                
+                error_message = f"Tool execution error: {str(e)}"
+                error_response = {
+                    "error": error_message,
+                    "formatted_text": f"❌ {error_message}",
+                    "status": "error",
+                    "api_data": {
+                        "error": error_message,
+                        "status": "error",
+                        "tool": tool_key
+                    }
+                }
+                
                 state["messages"].append(
-                    ToolMessage(tool_call_id=call["id"], content=json.dumps({"error": str(e)}))
+                    ToolMessage(tool_call_id=call["id"], content=json.dumps(error_response))
                 )
+    
     return state
-
 # ------------------ Graph Flow Control ------------------ #
 def should_continue(state: PlanningAgentState) -> str:
     """Determine the next step based on tool calls"""
@@ -514,27 +574,120 @@ class PlanningAgent:
         }
         final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})
         
+        # Initialize response with default structure and status
+        response = {
+            "output": "Let me help you plan your trip.",
+            "api_data": {},
+            "status": "success"
+        }
+        
         # Process the final state to extract the response
         for msg in reversed(final_state["messages"]):
             if isinstance(msg, ToolMessage):
                 try:
                     parsed = json.loads(msg.content)
-                    # Format based on which tool was called
+                    
+                    # Check for error cases first
+                    if "error" in parsed:
+                        error_message = parsed["error"]
+                        logger.warning(f"⚠️ Found error in tool message: {error_message}")
+                        
+                        # Set error status and message
+                        response["status"] = "error"
+                        response["error_message"] = error_message
+                        
+                        # Use formatted_text if available, otherwise use default error message
+                        response["output"] = parsed.get("formatted_text", f"❌ Error: {error_message}")
+                        
+                        # Handle api_data for errors
+                        if "api_data" in parsed and isinstance(parsed["api_data"], dict):
+                            response["api_data"] = parsed["api_data"]
+                        else:
+                            response["api_data"] = {
+                                "error": error_message,
+                                "status": "error"
+                            }
+                        
+                        return response
+                    
+                    # Handle success cases with structured formatting
+                    
+                    # Initialize output field if not already present
+                    if not response["output"] or response["output"] == "Let me help you plan your trip.":
+                        if "formatted_text" in parsed:
+                            response["output"] = parsed["formatted_text"]
+                    
+                    # Format based on which tool was called and preserve API data
                     if "hotels" in parsed:
-                        return {"output": format_hotel_results(parsed)}
+                        response["output"] = format_hotel_results(parsed)
+                        response["api_data"]["hotels"] = parsed.get("hotels", {})
                     elif "flight" in parsed:
-                        return {"output": format_flight_results(parsed)}
+                        response["output"] = format_flight_results(parsed)
+                        
+                        # Handle flight data properly based on structure
+                        if "flight" in parsed:
+                            response["api_data"]["flights"] = parsed.get("flight", {})
+                            
+                        # Also check for api_data if present (from our updated flight_search_agent)
+                        if "api_data" in parsed and isinstance(parsed["api_data"], dict):
+                            # Merge api_data into response api_data
+                            for key, value in parsed["api_data"].items():
+                                response["api_data"][key] = value
+                                
+                            # Special case for flight data in api_data
+                            if "flight" in parsed["api_data"]:
+                                response["api_data"]["flights"] = parsed["api_data"]["flight"]
                     elif "restaurants" in parsed:
-                        return {"output": format_restaurant_results(parsed)}
+                        response["output"] = format_restaurant_results(parsed)
+                        response["api_data"]["restaurants"] = parsed.get("restaurants", {})
                     elif "attractions" in parsed:
-                        return {"output": format_attractions_results(parsed)}
+                        response["output"] = format_attractions_results(parsed)
+                        response["api_data"]["attractions"] = parsed.get("attractions", {})
                     else:
-                        return {"output": f"✅ Results: {parsed}"}
-                except:
-                    return {"output": "⚠️ Received unparseable response data."}
+                        # For generic or unknown tool responses
+                        if "output" in parsed:
+                            response["output"] = parsed["output"]
+                        elif "formatted_text" in parsed:
+                            response["output"] = parsed["formatted_text"]
+                        else:
+                            response["output"] = f"✅ Results: {json.dumps(parsed)}"
+                        
+                        # Try to intelligently extract API data based on common patterns
+                        for key in ["flight", "hotel", "restaurant", "attraction"]:
+                            if key in parsed:
+                                plural_key = f"{key}s" if not key.endswith("s") else key
+                                response["api_data"][plural_key] = parsed[key]
+                        
+                        # Directly copy api_data if present
+                        if "api_data" in parsed and isinstance(parsed["api_data"], dict):
+                            for key, value in parsed["api_data"].items():
+                                response["api_data"][key] = value
+                    
+                    # Copy status if present
+                    if "status" in parsed:
+                        response["status"] = parsed["status"]
+                    
+                    return response
+                except Exception as e:
+                    logger.error(f"❌ Error parsing tool message: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    
+                    return {
+                        "output": "⚠️ Received unparseable response data.",
+                        "error_message": str(e),
+                        "status": "error",
+                        "api_data": {
+                            "error": str(e),
+                            "status": "error"
+                        }
+                    }
+            
+            # Handle AI messages (regular responses without tool calls)
             if isinstance(msg, AIMessage):
-                return {"output": msg.content}
-        return {"output": "Let me help you plan your trip."}
-
+                response["output"] = msg.content
+                return response
+        
+        # Return default response if no relevant messages found
+        return response
 # ✅ Instantiate
 agent = PlanningAgent()

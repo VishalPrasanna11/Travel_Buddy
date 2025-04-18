@@ -170,15 +170,31 @@ class LLMController:
             
             agent_response = await root_agent.ainvoke({"input": agent_input})
             answer = agent_response.get("output", "I couldn't process your request at this time.")
+            
+            # Build the final response with API data if available
+            response = {
+                "status": "success",
+                "answer": answer,
+                "model": "agent",
+                "chat_id": chat_id
+            }
+            
+            # Check for and add API data to the response
+            if "api_data" in agent_response:
+                # If there's a structured api_data field, use it
+                for data_type, data in agent_response["api_data"].items():
+                    response[data_type] = data
+            
+            # Also check for direct data fields for backward compatibility
+            for data_type in ["flights", "hotels", "restaurants", "attractions", "location"]:
+                if data_type in agent_response and data_type not in response:
+                    response[data_type] = agent_response[data_type]
+            
+            # Only store the text answer in chat history
+            await self.save_message(chat_history_controller, chat_id, "assistant", answer)
+            
+            return response
+            
         except Exception as e:
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=f"Error when calling agent: {str(e)}")
-        
-        await self.save_message(chat_history_controller, chat_id, "assistant", answer)
-        
-        return {
-            "status": "success",
-            "answer": answer,
-            "model": "agent",
-            "chat_id": chat_id
-        }
