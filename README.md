@@ -99,12 +99,14 @@
 ---
 
 ##  Architecture
-![image](https://github.com/user-attachments/assets/afd57572-3403-44e0-b285-9eb53e23ac75)
-
-## Workflow
-![image](https://github.com/user-attachments/assets/9172176b-ae8e-42aa-885b-f9a7f0bf16ca)
 
 ## AgentFlow
+![image](https://github.com/user-attachments/assets/afd57572-3403-44e0-b285-9eb53e23ac75)
+
+## MCP flow
+![image](https://github.com/user-attachments/assets/9172176b-ae8e-42aa-885b-f9a7f0bf16ca)
+
+## User Flow
 
 ![image](https://github.com/user-attachments/assets/86233095-7990-4194-9c4f-5303fce3bd28)
 
@@ -113,8 +115,6 @@ https://travelai.me/
 
 ## CodeLabs
 https://drive.google.com/drive/folders/1898HGutXjQIxwx3OVnr_Yvx9Uq_SKAE1?usp=sharing
-
-
 
 ##  Data Pipeline
 
