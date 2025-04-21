@@ -124,7 +124,7 @@ const FlightSearchPage: React.FC = () => {
         },
       });
       
-      console.log('Outbound flight response:', flightResponse.data);
+      // console.log('Outbound flight response:', flightResponse.data);
       
       // Check if API returned data properly
       if (flightResponse.data && Array.isArray(flightResponse.data)) {
@@ -150,7 +150,7 @@ const FlightSearchPage: React.FC = () => {
           },
         });
         
-        console.log('Return flight response:', returnFlightResponse.data);
+        // console.log('Return flight response:', returnFlightResponse.data);
         
         // Check if API returned data properly
         if (returnFlightResponse.data && Array.isArray(returnFlightResponse.data)) {

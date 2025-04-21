@@ -271,7 +271,7 @@ export default function ChatPage() {
       <div className="flex-1">
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full">
-            <h2 className="text-xl font-medium mb-6">Travel Assistant</h2>
+            {/* <h2 className="text-xl font-medium mb-6">Travel Assistant</h2> */}
             
             {isMobile ? (
               /* Mobile: Show only one suggestion at a time with padding */

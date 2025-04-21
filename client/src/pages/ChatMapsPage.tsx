@@ -52,17 +52,17 @@ function ChatArea() {
 
     // Skip if location already processed
     if (processedContentRef.current.has(content)) {
-      console.log('Already processed:', content);
+      // console.log('Already processed:', content);
       return;
     }
 
     // Skip if location already in detectedLocations
     if (detectedLocations.some(loc => loc.name.toLowerCase() === content)) {
-      console.log('Location already pinned:', content);
+      // console.log('Location already pinned:', content);
       return;
     }
 
-    console.log('Processing:', content);
+    // console.log('Processing:', content);
     setIsProcessingLocations(true);
     try {
       const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -70,7 +70,7 @@ function ChatArea() {
         if (locations.length > 0) {
           const validLocations = locations.filter(loc => loc.lat != null && loc.lng != null);
           if (validLocations.length > 0) {
-            console.log('Adding locations:', validLocations);
+            // console.log('Adding locations:', validLocations);
             addDetectedLocations(validLocations);
             processedContentRef.current.add(content);
           }
@@ -98,7 +98,7 @@ function ChatArea() {
 
   const handleSubmit = useCallback((e: any) => {
     if (e?.preventDefault) e.preventDefault();
-    console.log('Submitting:', input);
+    // console.log('Submitting:', input);
     submitChat(e);
   }, [submitChat, input]);
 

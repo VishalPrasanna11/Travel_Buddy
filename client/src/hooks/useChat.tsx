@@ -104,11 +104,16 @@ export function useChat(conversationId: string = uuidv4()) {
   const processResponseForLocations = useCallback((response: TravelResponse) => {
     try {
       const locations: Location[] = [];
-      
+      // Add this to the beginning of processResponseForLocations
+// console.log("Full API response structure:", JSON.stringify(response, null, 2));
+// console.log("attractions_list structure:", 
+  // response.attractions_list ? JSON.stringify(response.attractions_list, null, 2) : "undefined");
+      // console.log("Response",response.attractions)
       // Process attractions
       if (response.attractions && Array.isArray(response.attractions)) {
         response.attractions.forEach((attraction: any) => {
           if (attraction.location?.lat && attraction.location?.lng) {
+            // console.log("Attraction",attraction)
             locations.push({
               name: attraction.name,
               lat: attraction.location.lat,
@@ -123,11 +128,30 @@ export function useChat(conversationId: string = uuidv4()) {
           }
         });
       }
+      if (response.attractions?.attractions_list?.attractions && 
+        Array.isArray(response.attractions.attractions_list.attractions)) {
       
+      // console.log("Found attractions at correct path with", 
+        // response.attractions.attractions_list.attractions.length, "items");
+      
+      response.attractions.attractions_list.attractions.forEach((attraction: any) => {
+        if (attraction.location?.lat && attraction.location?.lng) {
+          // console.log("Adding attraction to locations:", attraction.name);
+          
+          locations.push({
+            name: attraction.name,
+            lat: attraction.location.lat,
+            lng: attraction.location.lng,
+            type: 'primary'
+          });
+        }
+      });
+    }
       // Process attractions_list structure
       if (response.attractions_list?.attractions && Array.isArray(response.attractions_list.attractions)) {
         response.attractions_list.attractions.forEach((attraction: any) => {
           if (attraction.location?.lat && attraction.location?.lng) {
+            // console.log("Attraction",attraction)
             locations.push({
               name: attraction.name,
               lat: attraction.location.lat,
@@ -145,13 +169,14 @@ export function useChat(conversationId: string = uuidv4()) {
       
       // Process hotels
       if (response.hotels?.data && Array.isArray(response.hotels.data)) {
-        response.hotels.data.forEach((hotelOffer: any) => {
-          if (hotelOffer.hotel?.location?.lat && hotelOffer.hotel?.location?.lng) {
+        response.hotels.data.forEach((hotel) => {
+          if (hotel.geoCode?.latitude && hotel.geoCode?.longitude) {
+            // console.log("Hotel", hotel.name);
             locations.push({
-              name: hotelOffer.hotel.name,
-              lat: hotelOffer.hotel.location.lat,
-              lng: hotelOffer.hotel.location.lng,
-              // address: hotelOffer.hotel.cityCode || "",
+              name: hotel.name,
+              lat: hotel.geoCode.latitude,
+              lng: hotel.geoCode.longitude,
+              // address: hotel.address?.countryCode || "",
               type: 'secondary', // Set hotels as secondary pins
               relevanceScore: 90
             });
@@ -229,7 +254,7 @@ export function useChat(conversationId: string = uuidv4()) {
       // Format messages for API and send request
       const formattedMessages = formatMessagesForAPI(messages);
       
-      console.log("Sending chat history:", formattedMessages);
+      // console.log("Sending chat history:", formattedMessages);
       
       const response: TravelResponse = await askQuestion({ 
         query: userMessage.content,

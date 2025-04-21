@@ -38,9 +38,9 @@ def flight_search_agent(*, input_str: str) -> Dict[str, Any]:
                 
             # Return both human-readable formatted text and the complete API data
             return {
-                "formatted_text": format_flight_results(api_data),
+                "formatted_text": api_data,
                 "flight": api_data.get("flight", {}),
-                "api_data": api_data  # Include the complete API response
+                # Include the complete API response
             }
         else:
             # For natural language input, we need to call the LLM parser
@@ -82,83 +82,154 @@ def flight_search_agent(*, input_str: str) -> Dict[str, Any]:
 #         msg += "\n"
 #     return msg
 
+# def format_flight_results(flight_data: Dict[str, Any]) -> str:
+#     """Format flight search results into a readable string"""
+#     try:
+#         # Handle error cases
+#         if "error" in flight_data:
+#             return f"❌ Flight search error: {flight_data['error']}"
+        
+#         # Check for flight data
+#         if "flight" not in flight_data:
+#             return "⚠️ No flight data received."
+        
+#         # Extract offers
+#         offers = flight_data["flight"].get("data", [])
+#         if not offers:
+#             return "No flights found matching your criteria."
+        
+#         # Log for debugging
+#         logger.info(f"Formatting {len(offers)} flight offers")
+        
+#         # Build the message
+#         msg = f"Here are some flight options from {offers[0]['itineraries'][0]['segments'][0]['departure']['iataCode']} to "
+#         destination = offers[0]['itineraries'][0]['segments'][-1]['arrival']['iataCode']
+        
+#         # Get departure and return dates
+#         dep_date = offers[0]['itineraries'][0]['segments'][0]['departure']['at'].split('T')[0]
+#         ret_date = offers[0]['itineraries'][1]['segments'][0]['departure']['at'].split('T')[0] if len(offers[0]['itineraries']) > 1 else "N/A"
+        
+#         msg += f"{destination}, departing on {dep_date} and returning on {ret_date}, {datetime.now().year}:\n\n"
+        
+#         for i, offer in enumerate(offers[:5], 1):
+#             price = offer.get("price", {}).get("total", "N/A")
+#             currency = offer.get("price", {}).get("currency", "USD")
+            
+#             # Format option heading with ### for better visibility
+#             msg += f"### Option {i}: ${price} {currency} - "
+            
+#             # Format itineraries
+#             for j, itinerary in enumerate(offer.get("itineraries", [])):
+#                 trip_type = "Outbound Journey" if j == 0 else "Return Journey"
+#                 msg += f"{trip_type}: - "
+                
+#                 for k, segment in enumerate(itinerary.get("segments", [])):
+#                     # Origin to destination format
+#                     dep = segment["departure"]["iataCode"]
+#                     arr = segment["arrival"]["iataCode"]
+                    
+#                     # Add connector if not the first segment
+#                     if k > 0:
+#                         msg += " - "
+                    
+#                     msg += f"{dep} to {arr}"
+                    
+#                     # Full details of this segment
+#                     flight_code = f"{segment.get('carrierCode', '')} {segment.get('number', '')}"
+#                     dep_time = segment["departure"]["at"].replace("T", " at ").split("+")[0]
+#                     arr_time = segment["arrival"]["at"].replace("T", " at ").split("+")[0]
+                    
+#                     msg += f": Flight {flight_code} - Departure: {dep_time} - Arrival: {arr_time}"
+                    
+#                     # Add separator between segments if needed
+#                     if k < len(itinerary.get("segments", [])) - 1:
+#                         msg += " - "
+                
+#                 # Add separator between outbound and return
+#                 if j == 0 and len(offer.get("itineraries", [])) > 1:
+#                     msg += " - "
+            
+#             # Add newline between options
+#             msg += "\n"
+        
+#         # Add summary message
+#         all_same_price = all(offer.get("price", {}).get("total") == offers[0].get("price", {}).get("total") for offer in offers)
+#         if all_same_price:
+#             msg += f"\nAll options are priced at ${offers[0].get('price', {}).get('total')} {offers[0].get('price', {}).get('currency', 'USD')}. Let me know if you need more details or assistance with booking!"
+        
+#         return msg
+        
+#     except Exception as e:
+#         logger.error(f"Error formatting flight results: {str(e)}")
+#         return f"Error formatting flight results: {str(e)}"
+
+
+
 def format_flight_results(flight_data: Dict[str, Any]) -> str:
-    """Format flight search results into a readable string"""
-    try:
-        # Handle error cases
-        if "error" in flight_data:
-            return f"❌ Flight search error: {flight_data['error']}"
+    """Format flight search results into a clean, readable string without hashtags"""
+    if "error" in flight_data:
+        return f"Flight search error: {flight_data['error']}"
+    if "flight" not in flight_data:
+        return "No flight data received."
+    
+    offers = flight_data["flight"].get("data", [])
+    if not offers:
+        return "No flights found matching your criteria."
+    
+    msg = "Here are some flight options:\n\n"
+    for i, offer in enumerate(offers[:5], 1):
+        price = offer.get("price", {}).get("total", "N/A")
+        currency = offer.get("price", {}).get("currency", "USD")
         
-        # Check for flight data
-        if "flight" not in flight_data:
-            return "⚠️ No flight data received."
+        # Start each option with clean formatting
+        msg += f"Option {i}: ${price} {currency}\n"
         
-        # Extract offers
-        offers = flight_data["flight"].get("data", [])
-        if not offers:
-            return "No flights found matching your criteria."
+        # Get carrier information from the first segment if available
+        carrier = "Flight"
+        if offer.get("itineraries") and offer["itineraries"][0].get("segments"):
+            carrier_code = offer["itineraries"][0]["segments"][0].get("carrierCode", "")
+            if carrier_code:
+                carrier = f"Flight: {carrier_code} Airlines"
         
-        # Log for debugging
-        logger.info(f"Formatting {len(offers)} flight offers")
+        msg += f"{carrier}\n"
         
-        # Build the message
-        msg = f"Here are some flight options from {offers[0]['itineraries'][0]['segments'][0]['departure']['iataCode']} to "
-        destination = offers[0]['itineraries'][0]['segments'][-1]['arrival']['iataCode']
+        # Format each segment of the itinerary
+        total_duration_minutes = 0
+        stops = []
         
-        # Get departure and return dates
-        dep_date = offers[0]['itineraries'][0]['segments'][0]['departure']['at'].split('T')[0]
-        ret_date = offers[0]['itineraries'][1]['segments'][0]['departure']['at'].split('T')[0] if len(offers[0]['itineraries']) > 1 else "N/A"
-        
-        msg += f"{destination}, departing on {dep_date} and returning on {ret_date}, {datetime.now().year}:\n\n"
-        
-        for i, offer in enumerate(offers[:5], 1):
-            price = offer.get("price", {}).get("total", "N/A")
-            currency = offer.get("price", {}).get("currency", "USD")
-            
-            # Format option heading with ### for better visibility
-            msg += f"### Option {i}: ${price} {currency} - "
-            
-            # Format itineraries
-            for j, itinerary in enumerate(offer.get("itineraries", [])):
-                trip_type = "Outbound Journey" if j == 0 else "Return Journey"
-                msg += f"{trip_type}: - "
+        for j, itinerary in enumerate(offer.get("itineraries", [])):
+            for segment in itinerary.get("segments", []):
+                dep = segment["departure"]["iataCode"]
+                arr = segment["arrival"]["iataCode"]
+                dep_time = segment["departure"]["at"].split("T")[1][:5]  # Extract HH:MM
+                arr_time = segment["arrival"]["at"].split("T")[1][:5]  # Extract HH:MM
+                flight_code = f"{segment.get('carrierCode', '')} {segment.get('number', '')}"
                 
-                for k, segment in enumerate(itinerary.get("segments", [])):
-                    # Origin to destination format
-                    dep = segment["departure"]["iataCode"]
-                    arr = segment["arrival"]["iataCode"]
-                    
-                    # Add connector if not the first segment
-                    if k > 0:
-                        msg += " - "
-                    
-                    msg += f"{dep} to {arr}"
-                    
-                    # Full details of this segment
-                    flight_code = f"{segment.get('carrierCode', '')} {segment.get('number', '')}"
-                    dep_time = segment["departure"]["at"].replace("T", " at ").split("+")[0]
-                    arr_time = segment["arrival"]["at"].replace("T", " at ").split("+")[0]
-                    
-                    msg += f": Flight {flight_code} - Departure: {dep_time} - Arrival: {arr_time}"
-                    
-                    # Add separator between segments if needed
-                    if k < len(itinerary.get("segments", [])) - 1:
-                        msg += " - "
+                msg += f"- {dep} to {arr}: {flight_code} - Departure: {dep_time} - Arrival: {arr_time}\n"
                 
-                # Add separator between outbound and return
-                if j == 0 and len(offer.get("itineraries", [])) > 1:
-                    msg += " - "
-            
-            # Add newline between options
-            msg += "\n"
+                # Track connection points
+                if arr != offer["itineraries"][-1]["segments"][-1]["arrival"]["iataCode"]:
+                    stops.append(arr)
+                
+                # Add duration if available
+                if "duration" in segment:
+                    duration_str = segment["duration"]
+                    hours = int(duration_str.replace("PT", "").split("H")[0]) if "H" in duration_str else 0
+                    minutes = int(duration_str.split("H")[1].replace("M", "")) if "H" in duration_str and "M" in duration_str else 0
+                    if not "H" in duration_str and "M" in duration_str:
+                        minutes = int(duration_str.replace("PT", "").replace("M", ""))
+                    total_duration_minutes += (hours * 60 + minutes)
         
-        # Add summary message
-        all_same_price = all(offer.get("price", {}).get("total") == offers[0].get("price", {}).get("total") for offer in offers)
-        if all_same_price:
-            msg += f"\nAll options are priced at ${offers[0].get('price', {}).get('total')} {offers[0].get('price', {}).get('currency', 'USD')}. Let me know if you need more details or assistance with booking!"
+        # Calculate total duration
+        hours = total_duration_minutes // 60
+        minutes = total_duration_minutes % 60
         
-        return msg
+        # Add total duration and stops
+        msg += f"Total Duration: {hours} hours {minutes} minutes"
+        if stops:
+            msg += f" - {len(stops)} stop{'s' if len(stops) > 1 else ''} at {', '.join(stops)}"
         
-    except Exception as e:
-        logger.error(f"Error formatting flight results: {str(e)}")
-        return f"Error formatting flight results: {str(e)}"
+        msg += "\n\n"
+    
+    msg += "Please let me know if you need more information or assistance with booking!"
+    return msg

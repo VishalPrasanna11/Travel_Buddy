@@ -15,83 +15,59 @@ export type User = {
     location?: string;
     hotels?: {
       data: Array<{
-        type: string;
-        hotel: {
-          type: string;
-          hotelId: string;
-          chainCode: string;
-          dupeId: string;
+        chainCode: string;
+        name: string;
+        hotelId: string;
+        geoCode: {
+          latitude: number;
+          longitude: number;
+        };
+        address: {
+          countryCode: string;
+        };
+        rating: number;
+      }>;
+      offers: Array<any>; // This is empty in the example but included in the type
+      meta: {
+        count: number;
+        offersCount: number;
+      };
+      request: {
+        checkInDate: string;
+        checkOutDate: string;
+        adults: number;
+        ratings: string;
+      };
+    };
+    attractions?: {
+      attractions_list: {
+        location: string;
+        attractions: Array<{
           name: string;
-          cityCode: string;
+          address: string;
+          rating: number;
+          total_ratings: number;
+          photo_url: string;
           location: {
             lat: number;
             lng: number;
-          }
-        };
-        available: boolean;
-        offers: Array<{
-          id: string;
-          checkInDate: string;
-          checkOutDate: string;
-          rateCode: string;
-          room: {
-            type: string;
-            typeEstimated: {
-              category: string;
-              beds: number;
-              bedType: string;
-            };
-            description: {
-              text: string;
-              lang: string;
-            }
           };
-          guests: {
-            adults: number;
-          };
-          price: {
-            currency: string;
-            base: string;
-            total: string;
-            variations: {
-              average: {
-                base: string;
-              };
-              changes: Array<{
-                startDate: string;
-                endDate: string;
-                total: string;
-              }>;
-            }
-          };
-          policies: {
-            paymentType: string;
-            cancellation: {
-              description: {
-                text: string;
-              };
-              type: string;
-            }
-          }
+          types: string[];
         }>;
-      }>;
-      dictionaries?: {
-        chains: Record<string, string>;
-        roomTypes: Record<string, string>;
-      }
-    };
-    attractions?: Array<{
-      name: string;
-      address: string;
-      rating: number;
-      total_ratings: number;
-      photo_url: string;
-      location: {
-        lat: number;
-        lng: number;
       };
-      types: string[];
-    }>;
+    };
+    // attractions?: Array<{
+    //   name: string;
+    //   address: string;
+    //   rating: number;
+    //   total_ratings: number;
+    //   photo_url: string;
+    //   location: {
+    //     lat: number;
+    //     lng: number;
+    //   };
+    //   types: string[];
+    // }>;
     attractions_list?: {
       attractions: Array<{
         name: string;

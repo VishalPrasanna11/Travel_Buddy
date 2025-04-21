@@ -137,5 +137,5 @@ export async function geocodeLocation(locationName: string): Promise<Location | 
  */
 export async function initializeGeocoder(apiKey: string): Promise<void> {
   // In a real app, you might initialize the geocoder here
-  console.log('Geocoder initialized with API key:', apiKey);
+  // console.log('Geocoder initialized with API key:', apiKey);
 }

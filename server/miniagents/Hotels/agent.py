@@ -36,7 +36,7 @@ def hotel_search_agent(*, input_str: str) -> Dict[str, Any]:
             return error_result
         
         # Format the results for human-readable output
-        formatted_text = format_hotel_results(result)
+        formatted_text = result
         
         # Create a structured response with both formatted text and raw data
         complete_result = {

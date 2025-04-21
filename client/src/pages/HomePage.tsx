@@ -1,7 +1,7 @@
 // src/pages/HomePage.tsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bot, ChevronRight,Compass, Star, Sparkles,  PlaneTakeoff, Hotel, Utensils, Camera, TrendingUp, Clock} from 'lucide-react';
+import { Bot, ChevronRight, Compass, Star, Sparkles, PlaneTakeoff, Hotel, Utensils, Camera, TrendingUp, Clock } from 'lucide-react';
 import { useAuth0 } from "@auth0/auth0-react";
 import { useCreateMyUser } from "@/api/UserApi";
 // Import shadcn components
@@ -14,9 +14,6 @@ import { AspectRatio } from "@/components/ui/aspect-ratio";
 
 import { useEffect, useRef } from "react";
 
-
-
-
 import kyotoImg from '../assets/kyoto.jpeg';
 import barcelonaImage from '/src/assets/barcelona.jpeg';
 import newZealandImage from '/src/assets/new-zealand.jpeg';
@@ -27,7 +24,6 @@ import adventureImage from '/src/assets/adventure.jpeg';
 import culinaryImage from '/src/assets/culinary.jpeg';
 import luxuryImage from '/src/assets/luxury.jpeg';
 
-
 // AI-recommended destinations
 const aiRecommendedDestinations = [
   {
@@ -36,7 +32,8 @@ const aiRecommendedDestinations = [
     description: "Traditional temples, serene gardens, and authentic cultural experiences",
     matchScore: 98,
     tags: ["Cultural", "Historical", "Peaceful"],
-    imageUrl: kyotoImg
+    imageUrl: kyotoImg,
+    externalLink: "https://kyoto.travel/en/"
   },
   {
     name: "Barcelona",
@@ -44,7 +41,8 @@ const aiRecommendedDestinations = [
     description: "Vibrant architecture, Mediterranean beaches, and lively atmosphere",
     matchScore: 95,
     tags: ["Architecture", "Beach", "Nightlife"],
-    imageUrl: barcelonaImage
+    imageUrl: barcelonaImage,
+    externalLink: "https://www.ricksteves.com/europe/spain/barcelona"
   },
   {
     name: "New Zealand",
@@ -52,7 +50,8 @@ const aiRecommendedDestinations = [
     description: "Breathtaking landscapes, outdoor adventures, and friendly locals",
     matchScore: 94,
     tags: ["Nature", "Adventure", "Scenic"],
-    imageUrl: newZealandImage
+    imageUrl: newZealandImage,
+    externalLink: "https://www.petrinadarrah.com/new-zealand-travel-guide"
   },
   {
     name: "Marrakech",
@@ -60,7 +59,8 @@ const aiRecommendedDestinations = [
     description: "Exotic markets, rich history, and sensory experiences",
     matchScore: 92,
     tags: ["Cultural", "Markets", "Historical"],
-    imageUrl: marrakechImage
+    imageUrl: marrakechImage,
+    externalLink: "https://www.stokedtotravel.com/3-days-in-marrakech/"
   },
 ];
 
@@ -76,13 +76,13 @@ const aiTravelInsights = [
     title: "Hidden gems in Portugal",
     description: "Based on local recommendations and off-the-beaten-path locations with high satisfaction ratings.",
     category: "Destination Discovery",
-    url:"https://www.europeanbestdestinations.com/destinations/portugal/best-hidden-gems-in-portugal/"
+    url: "https://www.europeanbestdestinations.com/destinations/portugal/best-hidden-gems-in-portugal/"
   },
   {
     title: "Budget-friendly European cities",
     description: "Analysis of accommodation, food, and attraction costs across 50+ European destinations.",
     category: "Budget Travel",
-    url:"https://travelbinger.com/europe-budget/"
+    url: "https://travelbinger.com/europe-budget/"
   }
 ];
 
@@ -118,44 +118,48 @@ const travelCategories = [
     description: "Immersive local experiences",
     icon: <Camera className="h-5 w-5" />,
     color: "raspberry",
-    imageUrl: culturalImage
+    imageUrl: culturalImage,
+    externalLink: "https://www.worldpackers.com/articles/cultural-travel#:~:text=Cultural%20travel%2C%20also%20called%20immersive,food%2C%20and%20ways%20of%20life."
   },
   {
     name: "Adventure",
     description: "Thrilling outdoor activities",
     icon: <Compass className="h-5 w-5" />,
     color: "amber",
-    imageUrl: adventureImage
+    imageUrl: adventureImage,
+    externalLink: "https://www.exploreworldwide.com/"
   },
   {
     name: "Culinary",
     description: "Food and drink experiences",
     icon: <Utensils className="h-5 w-5" />,
     color: "leaf-green",
-    imageUrl: culinaryImage
+    imageUrl: culinaryImage,
+    externalLink: "https://travelsquire.com/bringing-culinary-travel-inspiration-home/"
   },
   {
     name: "Luxury",
     description: "Premium travel experiences",
     icon: <Hotel className="h-5 w-5" />,
     color: "teal-blue",
-    imageUrl: luxuryImage
+    imageUrl: luxuryImage,
+    externalLink: "https://www.jacadatravel.com/experience-type/?gad_source=1&gbraid=0AAAAAD5VyX8JaD2_qq1aBFW_h9Zgyb6yq&gclid=CjwKCAjw8IfABhBXEiwAxRHlsLSdPjIa1hC68-tt99GzYPluzM1A-5MK-Hs06eSlgIihpo4d53SV3BoC7vgQAvD_BwE#intro"
   }
 ];
 
 const HomePage = () => {
   // Auth0 user authentication
   //Don't remove this
-  const {user} = useAuth0();
-  const {createUser} = useCreateMyUser();
+  const { user } = useAuth0();
+  const { createUser } = useCreateMyUser();
   const naviagte = useNavigate();
   const hasCreatedUser = useRef(false);
   useEffect(() => {
-      if(user?.sub && user.email && !hasCreatedUser.current){
-          createUser({auth0id:user.sub,email:user.email});
-          hasCreatedUser.current = true;
-      }
-      naviagte("/home");
+    if (user?.sub && user.email && !hasCreatedUser.current) {
+      createUser({ auth0id: user.sub, email: user.email });
+      hasCreatedUser.current = true;
+    }
+    naviagte("/home");
   }, [createUser, naviagte, user]);
 
   //Don't remove above
@@ -167,6 +171,15 @@ const HomePage = () => {
     if (aiPrompt) {
       navigate(`/ai-planner?prompt=${encodeURIComponent(aiPrompt)}`);
     }
+  };
+
+  // Function to handle the "Let's Start the journey?" button click
+  const handleStartJourney = () => {
+    // Generate a unique ID using timestamp and random string
+    const randomId = Date.now().toString(36) + Math.random().toString(36).substring(2);
+    
+    // Navigate to the chat route with this random ID
+    navigate(`/chat/${randomId}`);
   };
 
   return (
@@ -196,19 +209,7 @@ const HomePage = () => {
                 </TabsList>
 
                 <TabsContent value="ai" className="space-y-4">
-                  {/* <div className="text-sm text-muted-foreground mb-2">
-                    Describe your perfect trip and our AI will create a personalized plan
-                  </div> */}
                   <form onSubmit={handleAiPromptSubmit} className="space-y-4">
-                    {/* <div className="relative">
-                      <MessageSquare className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                      <textarea 
-                        placeholder="I'm looking for a 7-day trip to Japan in April with cultural experiences, good food, and some nature hikes..."
-                        className="w-full min-h-[120px] pl-10 pt-2 pr-3 pb-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                        value={aiPrompt}
-                        onChange={(e) => setAiPrompt(e.target.value)}
-                      />
-                    </div> */}
                     <div className="flex flex-wrap gap-2 mb-4">
                       <Badge variant="outline" className="cursor-pointer hover:bg-muted" onClick={() => setAiPrompt("I want a relaxing beach vacation with luxury accommodations")}>
                         Luxury Beach
@@ -223,13 +224,6 @@ const HomePage = () => {
                         Cultural Budget
                       </Badge>
                     </div>
-                    {/* <Button 
-                      className="w-full bg-raspberry hover:bg-raspberry/90"
-                      onClick={() => navigate('/waitlist')}
-                    >
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Join Waitlist to Access AI Planner
-                    </Button> */}
                   </form>
                 </TabsContent>
 
@@ -245,18 +239,17 @@ const HomePage = () => {
                     </div>
                     
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                      <Button size="lg" className="bg-raspberry hover:bg-raspberry/90" onClick={() => navigate('/waitlist')}>
+                      <Button 
+                        size="lg" 
+                        className="bg-raspberry hover:bg-raspberry/90" 
+                        onClick={handleStartJourney}
+                      >
                         <Sparkles className="mr-2 h-5 w-5" />
                         Let's Start the journey?
-                      </Button>
-                      <Button className="cursor-pointer" variant="outline" size="lg">
-                        Learn How It Works
                       </Button>
                     </div>
                   </div>
                 </div>
-
-
               </Tabs>
             </CardContent>
           </Card>
@@ -276,59 +269,64 @@ const HomePage = () => {
             </div>
             <p className="text-muted-foreground mt-1">Personalized recommendations based on your preferences and travel history</p>
           </div>
-          <Button variant="ghost" className="gap-1 text-raspberry">
-            View all <ChevronRight className="h-4 w-4" />
-          </Button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {aiRecommendedDestinations.map((destination) => (
-            <Card
-              key={destination.name}
-              className="overflow-hidden hover:shadow-md transition-all duration-300 cursor-pointer group"
-              onClick={() => navigate(`/destination/${destination.name}`)}
-            >
-              <AspectRatio ratio={3 / 4} className="bg-muted">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                <div className="absolute inset-0 flex items-end p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <Button variant="secondary" size="sm" className="w-full">
-                    Explore
-                  </Button>
+        {aiRecommendedDestinations.map((destination) => (
+          <Card
+            key={destination.name}
+            className="overflow-hidden hover:shadow-md transition-all duration-300 cursor-pointer group"
+          >
+            <AspectRatio ratio={3 / 4} className="bg-muted">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="absolute inset-0 flex items-end p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  className="w-full"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent any parent click handlers from firing
+                    // Open the external link in a new tab
+                    window.open(destination.externalLink, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  Explore
+                </Button>
+              </div>
+              {/* Destination image */}
+              {destination.imageUrl ? (
+                <img 
+                  src={destination.imageUrl} 
+                  alt={`${destination.name}, ${destination.country}`}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-amber/20 to-raspberry/20">
+                  <span className="text-muted-foreground font-medium">{destination.name}</span>
                 </div>
-                {/* Destination image */}
-                {destination.imageUrl ? (
-                  <img 
-                    src={destination.imageUrl} 
-                    alt={`${destination.name}, ${destination.country}`}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-amber/20 to-raspberry/20">
-                    <span className="text-muted-foreground font-medium">{destination.name}</span>
-                  </div>
-                )}
-                <div className="absolute top-3 right-3">
-                  <Badge className="bg-raspberry text-white">
-                    {destination.matchScore}% Match
+              )}
+              <div className="absolute top-3 right-3">
+                <Badge className="bg-raspberry text-white">
+                  {destination.matchScore}% Match
+                </Badge>
+              </div>
+            </AspectRatio>
+            <CardContent className="p-4">
+              <div className="mb-2">
+                <h3 className="font-medium text-lg">{destination.name}</h3>
+                <p className="text-sm text-muted-foreground">{destination.country}</p>
+              </div>
+              <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{destination.description}</p>
+              <div className="flex flex-wrap gap-1">
+                {destination.tags.map(tag => (
+                  <Badge key={tag} variant="outline" className="text-xs bg-muted/50">
+                    {tag}
                   </Badge>
-                </div>
-              </AspectRatio>
-              <CardContent className="p-4">
-                <div className="mb-2">
-                  <h3 className="font-medium text-lg">{destination.name}</h3>
-                  <p className="text-sm text-muted-foreground">{destination.country}</p>
-                </div>
-                <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{destination.description}</p>
-                <div className="flex flex-wrap gap-1">
-                  {destination.tags.map(tag => (
-                    <Badge key={tag} variant="outline" className="text-xs bg-muted/50">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
         </div>
       </div>
 
@@ -380,10 +378,7 @@ const HomePage = () => {
           </div>
 
           <div className="flex justify-center mt-8">
-            {/* <Button className="bg-raspberry hover:bg-raspberry/90" size="lg">
-              <Bot className="mr-2 h-5 w-5" />
-              Try AI Planning Now
-            </Button> */}
+            {/* Button removed */}
           </div>
         </div>
       </div>
@@ -395,9 +390,6 @@ const HomePage = () => {
             <h2 className="text-3xl font-medium">AI Travel Insights</h2>
             <p className="text-muted-foreground mt-1">Data-driven travel intelligence to enhance your journey</p>
           </div>
-          <Button variant="ghost" className="gap-1 text-raspberry">
-            More insights <ChevronRight className="h-4 w-4" />
-          </Button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -411,13 +403,6 @@ const HomePage = () => {
                 <p className="text-muted-foreground">{insight.description}</p>
               </CardContent>
 
-
-              {/* <CardFooter className="pt-0 pb-6 px-6">
-                <Button variant="ghost" className="p-0 h-auto text-raspberry hover:text-raspberry/80">
-                  Read full analysis <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </CardFooter> */}
-
               <CardFooter className="pt-0 pb-6 px-6">
                 <Button 
                   variant="ghost" 
@@ -427,9 +412,6 @@ const HomePage = () => {
                   Read full analysis <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </CardFooter>
-
-
-              
             </Card>
           ))}
         </div>
@@ -493,7 +475,11 @@ const HomePage = () => {
         
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {travelCategories.map((category) => (
-            <Card key={category.name} className="cursor-pointer hover:shadow-md transition-all duration-300 group overflow-hidden">
+            <Card 
+              key={category.name} 
+              className="cursor-pointer hover:shadow-md transition-all duration-300 group overflow-hidden"
+              onClick={() => window.open(category.externalLink, "_blank", "noopener,noreferrer")}
+            >
               <AspectRatio ratio={1/1}>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                 <div className="absolute inset-0 flex flex-col justify-end p-4">
@@ -523,3 +509,9 @@ const HomePage = () => {
 };
 
 export default HomePage;
+
+
+
+
+
+

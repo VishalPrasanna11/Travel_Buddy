@@ -48,7 +48,7 @@ export const useAskTravelQuestion = () => {
       user_email: userEmail
     };
 
-    console.log("Sending request to API:", JSON.stringify(requestData));
+    // console.log("Sending request to API:", JSON.stringify(requestData));
 
     const response = await fetch(`${API_BASE_URL}/api/llm/ask-question`, {
       method: "POST",
@@ -64,7 +64,9 @@ export const useAskTravelQuestion = () => {
       throw new Error(errorMessage);
     }
     
-    return response.json();
+    const responseData = await response.json();
+    // console.log("API response data:", responseData);
+    return responseData;
   };
   
   const {

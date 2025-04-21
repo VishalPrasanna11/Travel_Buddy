@@ -40,7 +40,7 @@ function ChatArea() {
   // Handler for detected locations - Using useCallback to prevent recreation on every render
   const handleLocationDetected = useCallback((locations: Location[]) => {
     if (locations && locations.length > 0) {
-      console.log("Adding locations to map from ChatComponent:", locations);
+      // console.log("Adding locations to map from ChatComponent:", locations);
       addDetectedLocations(locations);
     }
   }, [addDetectedLocations]);
@@ -48,7 +48,7 @@ function ChatArea() {
   return (
     <div className="h-full flex flex-col">
       <div className="p-2 border-b bg-white flex justify-between">
-        <h2 className="text-xl font-semibold">Travel Assistant</h2>
+        {/* <h2 className="text-xl font-semibold">Travel Assistant</h2> */}
         {!isEmpty && (
           <button
             onClick={resetChat}

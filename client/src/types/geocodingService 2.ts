@@ -43,14 +43,14 @@ export async function extractLocationsFromText(text: string): Promise<string[]> 
     while ((match = pattern.exec(normalizedText)) !== null) {
       const location = match[2] || match[1];
       if (location && location.length > 2 && !ignoreWords.includes(location.toLowerCase())) {
-        console.log(`Pattern ${index} matched: "${location}"`);
+        // console.log(`Pattern ${index} matched: "${location}"`);
         potentialLocations.add(location.trim());
       }
     }
   });
   
   const locations = Array.from(potentialLocations);
-  console.log("Final extracted location names:", locations);
+  // console.log("Final extracted location names:", locations);
   return locations;
 }
 
@@ -103,13 +103,13 @@ export async function geocodeLocation(locationName: string, apiKey: string): Pro
     }
     lastRequestTime = Date.now();
 
-    console.log(`Geocoding "${locationName}"`);
+    // console.log(`Geocoding "${locationName}"`);
 
     // Check cache
     const cacheKey = `geocode_${locationName.toLowerCase()}`;
     const cachedResult = localStorage.getItem(cacheKey);
     if (cachedResult) {
-      console.log(`Using cached result for "${locationName}"`);
+      // console.log(`Using cached result for "${locationName}"`);
       return JSON.parse(cachedResult);
     }
 
@@ -117,7 +117,7 @@ export async function geocodeLocation(locationName: string, apiKey: string): Pro
     const baseUrl = import.meta.env.VITE_BASE_URL || '';
     const backendProxy = `${baseUrl}/api/maps/geocode`;
     
-    console.log(`Fetching: ${backendProxy}?address=${encodeURIComponent(locationName)}`);
+    // console.log(`Fetching: ${backendProxy}?address=${encodeURIComponent(locationName)}`);
     
     const response = await fetch(
       `${backendProxy}?address=${encodeURIComponent(locationName)}`,
@@ -137,7 +137,7 @@ export async function geocodeLocation(locationName: string, apiKey: string): Pro
     }
     
     const data = await response.json();
-    console.log(`Geocoding response for "${locationName}":`, data);
+    // console.log(`Geocoding response for "${locationName}":`, data);
     
     if (data.status === 'OK' && data.results && data.results.length > 0) {
       const result = data.results[0];
@@ -154,7 +154,7 @@ export async function geocodeLocation(locationName: string, apiKey: string): Pro
       };
 
       localStorage.setItem(cacheKey, JSON.stringify(location));
-      console.log(`Successfully geocoded "${locationName}":`, location);
+      // console.log(`Successfully geocoded "${locationName}":`, location);
       return location;
     } else {
       console.warn(`Geocoding failed for "${locationName}": ${data.status}`);
@@ -176,12 +176,12 @@ export async function processLocationQuery(
   onUpdate?: (locations: Location[]) => void
 ): Promise<Location[]> {
   try {
-    console.log("Processing query:", query);
+    // console.log("Processing query:", query);
     const locationNames = await extractLocationsFromText(query);
-    console.log("Extracted location names:", locationNames);
+    // console.log("Extracted location names:", locationNames);
     
     if (locationNames.length === 0) {
-      console.log("No locations found in query");
+      // console.log("No locations found in query");
       return [];
     }
     
@@ -191,7 +191,7 @@ export async function processLocationQuery(
       try {
         const geocoded = await geocodeLocation(name, apiKey);
         if (!geocoded) {
-          console.log(`Skipping "${name}" due to geocoding failure`);
+          // console.log(`Skipping "${name}" due to geocoding failure`);
           continue;
         }
         
@@ -208,7 +208,7 @@ export async function processLocationQuery(
         };
         
         locations.push(location);
-        console.log(`Added location:`, location);
+        // console.log(`Added location:`, location);
         
         if (onUpdate) {
           onUpdate([...locations]);
@@ -219,7 +219,7 @@ export async function processLocationQuery(
     }
     
     const sortedLocations = locations.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-    console.log("Final locations:", sortedLocations);
+    // console.log("Final locations:", sortedLocations);
     return sortedLocations;
 
   } catch (error) {

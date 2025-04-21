@@ -79,7 +79,7 @@ export function LocationSearch({
 
   // Fallback to mock results if geocoding fails
   const useFallbackResults = () => {
-    console.log("Geocoding failed, using mock results");
+    // console.log("Geocoding failed, using mock results");
     
     const mockResults: Location[] = [
       {

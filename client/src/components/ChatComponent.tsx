@@ -143,7 +143,7 @@ export default function ChatComponent({
           }
           
           if (locations.length > 0) {
-            console.log("Found locations in JSON:", locations);
+            // console.log("Found locations in JSON:", locations);
             onLocationDetected(locations);
             return;
           }
@@ -175,7 +175,7 @@ export default function ChatComponent({
       }
       
       if (locations.length > 0) {
-        console.log("Found locations in text:", locations);
+        // console.log("Found locations in text:", locations);
         onLocationDetected(locations);
       }
     } catch (err) {

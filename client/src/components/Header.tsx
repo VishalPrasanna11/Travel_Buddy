@@ -34,7 +34,7 @@ const Header = ({ children, showSidebar = true }: MainHeaderProps) => {
                             <Menu className="h-5 w-5" />
                         </SidebarTrigger>
                     )}
-                    <Link to="/" className="font-medium text-xl">TravelBuddy</Link>
+                    <a href="/home" className="font-medium text-xl">TravelBuddy</a>
                 </div>
                 
                 <div>

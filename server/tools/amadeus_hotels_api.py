@@ -114,24 +114,182 @@ def fix_date(date_str: str) -> str:
     except Exception:
         return datetime.datetime.now().strftime("%Y-%m-%d")
 
+# def perform_hotel_search_api(params: Dict[str, Any]) -> Dict[str, Any]:
+#     required = ["city", "checkInDate", "checkOutDate", "adults"]
+#     if missing := [k for k in required if not params.get(k)]:
+#         return {"error": f"Missing required params: {', '.join(missing)}"}
+
+#     token = get_amadeus_access_token()
+#     city_code = get_city_code(params["city"], token)
+#     checkin = fix_date(params["checkInDate"])
+#     checkout = fix_date(params["checkOutDate"])
+#     adults = int(params.get("adults", 1))
+
+#     url = "https://test.api.amadeus.com/v1/reference-data/locations/hotels/by-city"
+#     query = {"cityCode": city_code}
+#     headers = {"Authorization": f"Bearer {token}"}
+
+#     wait = rate_limiter.wait_time()
+#     if wait > 0: time.sleep(wait)
+
+#     try:
+#         rate_limiter.record_call()
+#         res = httpx.get(url, headers=headers, params=query, timeout=60)
+#         if res.status_code == 429:
+#             rate_limiter.record_429()
+#             return {"error": "Rate limit exceeded. Please retry shortly."}
+#         res.raise_for_status()
+#         hotels = res.json()
+#         hotels["request"] = {
+#             "checkInDate": checkin,
+#             "checkOutDate": checkout,
+#             "adults": adults
+#         }
+#         return {"hotels": hotels}
+#     except Exception as e:
+#         logger.error(f"❌ Hotel search error: {e}")
+#         return {"error": f"Hotel search failed: {str(e)}"}
+
+# def perform_hotel_search_api(params: Dict[str, Any]) -> Dict[str, Any]:
+#     required = ["city", "checkInDate", "checkOutDate", "adults"]
+#     if missing := [k for k in required if not params.get(k)]:
+#         return {"error": f"Missing required params: {', '.join(missing)}"}
+    
+#     token = get_amadeus_access_token()
+#     city_code = get_city_code(params["city"], token)
+#     checkin = fix_date(params["checkInDate"])
+#     checkout = fix_date(params["checkOutDate"])
+#     adults = int(params.get("adults", 1))
+    
+#     # Default to 5-star rating
+#     ratings = "5"
+    
+#     url = "https://test.api.amadeus.com/v1/reference-data/locations/hotels/by-city"
+#     query = {
+#         "cityCode": city_code,
+#         "ratings": ",".join(ratings) if isinstance(ratings, list) else ratings,
+#          # Limit results to 10
+#     }
+#     headers = {"Authorization": f"Bearer {token}"}
+    
+#     wait = rate_limiter.wait_time()
+#     if wait > 0: time.sleep(wait)
+    
+#     try:
+#         rate_limiter.record_call()
+#         res = httpx.get(url, headers=headers, params=query, timeout=60)
+#         if res.status_code == 429:
+#             rate_limiter.record_429()
+#             return {"error": "Rate limit exceeded. Please retry shortly."}
+#         res.raise_for_status()
+#         hotels = res.json()
+#         if "data" in hotels and len(hotels["data"]) > 10:
+#             hotels["data"] = hotels["data"][:10]
+#         hotels["request"] = {
+#             "checkInDate": checkin,
+#             "checkOutDate": checkout,
+#             "adults": adults,
+#             "ratings": ratings
+#         }
+#         return {"hotels": hotels}
+#     except Exception as e:
+#         logger.error(f"❌ Hotel search error: {e}")
+#         return {"error": f"Hotel search failed: {str(e)}"}
+
+# def perform_hotel_search_api(params: Dict[str, Any]) -> Dict[str, Any]:
+#     required = ["city", "checkInDate", "checkOutDate", "adults"]
+#     if missing := [k for k in required if not params.get(k)]:
+#         return {"error": f"Missing required params: {', '.join(missing)}"}
+    
+#     token = get_amadeus_access_token()
+#     city_code = get_city_code(params["city"], token)
+#     checkin = fix_date(params["checkInDate"])
+#     checkout = fix_date(params["checkOutDate"])
+#     adults = int(params.get("adults", 1))
+    
+#     # Default to 5-star rating
+#     ratings = params.get("ratings", "5")
+    
+#     url = "https://test.api.amadeus.com/v1/reference-data/locations/hotels/by-city"
+#     query = {
+#         "cityCode": city_code,
+#         "ratings": ratings
+#     }
+#     headers = {"Authorization": f"Bearer {token}"}
+    
+#     wait = rate_limiter.wait_time()
+#     if wait > 0: time.sleep(wait)
+    
+#     try:
+#         rate_limiter.record_call()
+#         res = httpx.get(url, headers=headers, params=query, timeout=60)
+#         if res.status_code == 429:
+#             rate_limiter.record_429()
+#             return {"error": "Rate limit exceeded. Please retry shortly."}
+#         res.raise_for_status()
+#         hotels = res.json()
+        
+#         # Limit results to top 10
+#         if "data" in hotels and len(hotels["data"]) > 10:
+#             hotels["data"] = hotels["data"][:10]
+        
+#         # Clean up each hotel entry to remove unnecessary fields
+#         cleaned_data = []
+#         for hotel in hotels.get("data", []):
+#             cleaned_hotel = {
+#                 "chainCode": hotel.get("chainCode"),
+#                 "name": hotel.get("name"),
+#                 "hotelId": hotel.get("hotelId"),
+#                 "geoCode": hotel.get("geoCode"),
+#                 "address": hotel.get("address"),
+#                 "rating": hotel.get("rating")
+#             }
+#             cleaned_data.append(cleaned_hotel)
+        
+#         # Create a clean response object
+#         clean_response = {
+#             "data": cleaned_data,
+#             "meta": {"count": len(cleaned_data)},
+#             "request": {
+#                 "checkInDate": checkin,
+#                 "checkOutDate": checkout,
+#                 "adults": adults,
+#                 "ratings": ratings
+#             }
+#         }
+        
+#         return {"hotels": clean_response}
+#     except Exception as e:
+#         logger.error(f"❌ Hotel search error: {e}")
+#         return {"error": f"Hotel search failed: {str(e)}"}
+
 def perform_hotel_search_api(params: Dict[str, Any]) -> Dict[str, Any]:
     required = ["city", "checkInDate", "checkOutDate", "adults"]
     if missing := [k for k in required if not params.get(k)]:
         return {"error": f"Missing required params: {', '.join(missing)}"}
-
+    
     token = get_amadeus_access_token()
     city_code = get_city_code(params["city"], token)
     checkin = fix_date(params["checkInDate"])
     checkout = fix_date(params["checkOutDate"])
     adults = int(params.get("adults", 1))
-
+    
+    # Default to 5-star rating
+    ratings = "5"
+    
     url = "https://test.api.amadeus.com/v1/reference-data/locations/hotels/by-city"
-    query = {"cityCode": city_code}
-    headers = {"Authorization": f"Bearer {token}"}
-
+    query = {
+        "cityCode": city_code,
+        "ratings": ratings
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json"
+    }
+    
     wait = rate_limiter.wait_time()
     if wait > 0: time.sleep(wait)
-
+    
     try:
         rate_limiter.record_call()
         res = httpx.get(url, headers=headers, params=query, timeout=60)
@@ -140,12 +298,86 @@ def perform_hotel_search_api(params: Dict[str, Any]) -> Dict[str, Any]:
             return {"error": "Rate limit exceeded. Please retry shortly."}
         res.raise_for_status()
         hotels = res.json()
-        hotels["request"] = {
-            "checkInDate": checkin,
-            "checkOutDate": checkout,
-            "adults": adults
+        
+        # Limit results to top 10
+        if "data" in hotels and len(hotels["data"]) > 10:
+            hotels["data"] = hotels["data"][:10]
+        
+        # Clean up each hotel entry
+        cleaned_data = []
+        hotel_ids = []
+        
+        for hotel in hotels.get("data", []):
+            # Extract hotel ID for offers search
+            if "hotelId" in hotel and "chainCode" in hotel:
+                hotel_id = f"{hotel['chainCode']}{hotel['hotelId']}"
+                hotel_ids.append(hotel_id)
+            
+            # Create cleaned hotel object
+            cleaned_hotel = {
+                "chainCode": hotel.get("chainCode"),
+                "name": hotel.get("name"),
+                "hotelId": hotel.get("hotelId"),
+                "geoCode": hotel.get("geoCode"),
+                "address": hotel.get("address"),
+                "rating": hotel.get("rating")
+            }
+            cleaned_data.append(cleaned_hotel)
+        
+        # Get hotel offers if we have hotel IDs
+        offers_data = []
+        if hotel_ids:
+            # Prepare for hotel offers API call
+            offers_url = "https://test.api.amadeus.com/v3/shopping/hotel-offers"
+            offers_params = {
+                "hotelIds": ",".join(hotel_ids),  # Join IDs with commas
+                "adults": adults,
+                "checkInDate": checkin,
+                "checkOutDate": checkout
+            }
+            
+            # Use the same headers for offers request
+            offers_headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json"
+            }
+            
+            wait = rate_limiter.wait_time()
+            if wait > 0: time.sleep(wait)
+            
+            try:
+                rate_limiter.record_call()
+                offers_res = httpx.get(
+                    offers_url, 
+                    headers=offers_headers, 
+                    params=offers_params, 
+                    timeout=60
+                )
+                
+                if offers_res.status_code != 429:  # Only process if not rate limited
+                    offers_res.raise_for_status()
+                    offers_data = offers_res.json().get("data", [])
+            except Exception as offers_err:
+                logger.error(f"❌ Hotel offers error: {offers_err}")
+                # Continue with the hotels data even if offers fail
+        
+        # Create final response structure
+        clean_response = {
+            "data": cleaned_data,
+            "offers": offers_data,
+            "meta": {
+                "count": len(cleaned_data),
+                "offersCount": len(offers_data)
+            },
+            "request": {
+                "checkInDate": checkin,
+                "checkOutDate": checkout,
+                "adults": adults,
+                "ratings": ratings
+            }
         }
-        return {"hotels": hotels}
+        
+        return {"hotels": clean_response}
     except Exception as e:
         logger.error(f"❌ Hotel search error: {e}")
         return {"error": f"Hotel search failed: {str(e)}"}

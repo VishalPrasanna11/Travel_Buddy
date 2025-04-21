@@ -16,11 +16,9 @@
 
 ## Project URLs
 - Code Labs: [Codelabs Documentation](https://codelabs-preview.appspot.com/?file_id=1tutswOpFN6G73kNlOOBUUXkxT-XiGBHQ0f_FO67wKHs#0)
-- Application: [Front End](https://travelai.me/)
+- Application: [Front End]()
 - Swagger: [Swagger](http://34.45.163.161:8000/docs)
 - Airflow: [Airflow](http://159.89.95.178:8080/home)
-- Live Demo : [Travel AI](https://travelai.me/)
-- Walkthrough Video : [Application Walkthrough](https://drive.google.com/drive/folders/1898HGutXjQIxwx3OVnr_Yvx9Uq_SKAE1?usp=sharing)
 - Github Tasks: [GitHub Issues and Tasks](https://github.com/DAMG7245/Travel_Buddy/issues?q=is%3Aissue%20state%3Aclosed&page=1)
 ---
 
@@ -99,20 +97,6 @@
 - Learn from user feedback to improve over time
 
 ---
-
-##  Architecture
-
-## AgentFlow
-![image](https://github.com/user-attachments/assets/afd57572-3403-44e0-b285-9eb53e23ac75)
-
-## MCP flow
-![image](https://github.com/user-attachments/assets/9172176b-ae8e-42aa-885b-f9a7f0bf16ca)
-
-## User Flow
-
-![image](https://github.com/user-attachments/assets/86233095-7990-4194-9c4f-5303fce3bd28)
-
-
 ##  Data Pipeline
 
 1. **User Query Ingestion** – Requests originate from client-side React frontend and are routed through FastAPI endpoints.
@@ -391,7 +375,4 @@ Travel_Buddy/
 MIT License – Feel free to fork, extend, and build upon TravelBuddy.
 
 ---
-## 🤖 AI Usage Disclosure
-
-AI tools such as OpenAI GPT, LangChain, and GitHub Copilot were used for implementing multi-agent travel assistance, generating responses, and supporting development tasks like code scaffolding and prompt tuning.
 
