@@ -1,27 +1,25 @@
-fastapi>=0.100.0
-uvicorn==0.22.0
-sqlalchemy==2.0.12
-pydantic>=2.7.4
-python-jose==3.3.0
-python-dotenv==1.0.0
-psycopg2-binary==2.9.6
-pyjwt==2.6.0
-python-multipart==0.0.6
+fastapi>=0.143.0
+uvicorn>=0.54.0
+sqlalchemy>=2.1.5
+pydantic>=2.14.1
+python-jose>=3.5.0
+python-dotenv>=1.0.0
+psycopg2-binary>=2.9.13
+pyjwt>=2.15.1
+python-multipart>=0.0.6
 
-httpx>=0.23.0,<1
+httpx>=0.28.1
 starlette>=0.27.0
-openai==1.73.0
+openai>=3.40.0
 pydantic[email]
 shortuuid
 
-# Updated to newer compatible versions
-langchain>=0.3.23
-langchain-openai>=0.3.13
-langchain-core>=0.3.52
+langchain>=1.4.7
+langchain-openai>=1.7.3
+langchain-core>=1.7.0
 typing-extensions>=4.8.0
 tenacity>=8.2.0
-langsmith>=0.3.31
-langchain-community>=0.3.21
+langsmith>=0.14.12
 langchain-google-community>=2.0.7
-langgraph>=0.3.30
-snowflake-connector-python
+langgraph>=1.2.18
+snowflake-connector-python>=4.7.3
