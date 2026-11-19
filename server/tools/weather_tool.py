@@ -21,8 +21,7 @@ class WeatherTool:
         self.fallback_url = "http://localhost:8080"
 
         if "OPENWEATHER_API_KEY" not in os.environ:
-            logger.error("OPENWEATHER_API_KEY environment variable not set")
-            raise ValueError("OPENWEATHER_API_KEY environment variable not set")
+            logger.warning("OPENWEATHER_API_KEY not set – weather tool will use simulated data")
 
         logger.info(f"Initialized WeatherTool with API key: {os.environ.get('OPENWEATHER_API_KEY', '')[:5]}...")
 
