@@ -1,5 +1,3 @@
-# google_restaurant_api.py
-
 import os
 import httpx
 import logging
@@ -8,36 +6,40 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger("google_restaurant_api")
 logging.basicConfig(level=logging.INFO)
 
-GOOGLE_PLACES_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-GOOGLE_PHOTO_URL = "https://maps.googleapis.com/maps/api/place/photo"
+GOOGLE_PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
+
 
 def perform_google_restaurant_search(location: str, api_key: str) -> Dict[str, Any]:
-    params = {
-        "query": f"best restaurants in {location}",
-        "type": "restaurant",
-        "key": api_key
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key,
+        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.types,places.location,places.photos",
+    }
+    body = {
+        "textQuery": f"best restaurants in {location}",
+        "includedType": "restaurant",
     }
 
     try:
-        logger.info(f"🍽️ Searching restaurants in: {location}")
-        response = httpx.get(GOOGLE_PLACES_SEARCH_URL, params=params, timeout=30)
+        logger.info(f"Searching restaurants in: {location}")
+        response = httpx.post(GOOGLE_PLACES_URL, headers=headers, json=body, timeout=30)
         response.raise_for_status()
-        results = response.json().get("results", [])[:10]
+        results = response.json().get("places", [])[:10]
 
         restaurants = []
         for place in results:
-            name = place.get("name")
-            address = place.get("formatted_address")
+            name = place.get("displayName", {}).get("text", "")
+            address = place.get("formattedAddress", "")
             rating = place.get("rating", 0.0)
-            total_ratings = place.get("user_ratings_total", 0)
+            total_ratings = place.get("userRatingCount", 0)
             types = place.get("types", [])
-            location_data = place.get("geometry", {}).get("location", {})
+            location_data = place.get("location", {})
 
-            # Construct photo URL
             photo_url = None
             if photos := place.get("photos"):
-                photo_ref = photos[0].get("photo_reference")
-                photo_url = f"{GOOGLE_PHOTO_URL}?maxwidth=400&photoreference={photo_ref}&key={api_key}"
+                photo_name = photos[0].get("name", "")
+                if photo_name:
+                    photo_url = f"https://places.googleapis.com/v1/{photo_name}/media?maxWidthPx=400&key={api_key}"
 
             restaurants.append({
                 "name": name,
@@ -45,15 +47,12 @@ def perform_google_restaurant_search(location: str, api_key: str) -> Dict[str, A
                 "rating": rating,
                 "total_ratings": total_ratings,
                 "photo_url": photo_url,
-                "location": location_data,
-                "types": types
+                "location": {"lat": location_data.get("latitude"), "lng": location_data.get("longitude")},
+                "types": types,
             })
 
-        return {
-            "location": location,
-            "restaurants": restaurants
-        }
+        return {"location": location, "restaurants": restaurants}
 
     except Exception as e:
-        logger.error(f"❌ Failed to fetch restaurants for {location}: {e}")
+        logger.error(f"Failed to fetch restaurants for {location}: {e}")
         return {"error": f"Failed to fetch restaurants for {location}: {str(e)}"}

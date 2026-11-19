@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""LangGraph tool wrapper to Google Maps Places API."""
+"""LangGraph tool wrapper to Google Maps Places API (new)."""
 
 import os
 import requests
@@ -21,63 +21,50 @@ from langchain_core.tools import tool
 
 
 class PlacesService:
-    """Wrapper to Places API."""
+    """Wrapper to Places API (new)."""
 
     def _check_key(self):
-        if (
-            not hasattr(self, "places_api_key") or not self.places_api_key
-        ):
+        if not hasattr(self, "places_api_key") or not self.places_api_key:
             self.places_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
 
     def find_place_from_text(self, query: str) -> Dict[str, str]:
-        """Fetches place details using a text query."""
+        """Fetches place details using a text query via the new Places API."""
         self._check_key()
-        
-        # Log the API key status (without revealing the key)
+
         if not self.places_api_key:
             print("WARNING: Google Places API key is not set!")
-        else:
-            print(f"Using Google Places API key: {self.places_api_key[:4]}...{self.places_api_key[-4:]}")
-        
-        # Use the more appropriate "textsearch" endpoint for category searches
-        places_url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-        params = {
-            "query": query,
-            "fields": "place_id,formatted_address,name,photos,geometry",
-            "key": self.places_api_key,
+            return {"error": "Google Places API key is not set"}
+
+        url = "https://places.googleapis.com/v1/places:searchText"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": self.places_api_key,
+            "X-Goog-FieldMask": "places.id,places.formattedAddress,places.displayName,places.photos,places.location",
         }
+        body = {"textQuery": query}
 
         try:
             print(f"Making Places API request with query: '{query}'")
-            response = requests.get(places_url, params=params)
+            response = requests.post(url, headers=headers, json=body)
             status_code = response.status_code
             print(f"Places API response status: {status_code}")
-            
+
             response.raise_for_status()
             place_data = response.json()
-            
-            # Log the response status from the Places API
-            api_status = place_data.get("status", "UNKNOWN")
-            print(f"Places API status: {api_status}")
-            
-            if api_status != "OK":
-                error_message = place_data.get("error_message", "Unknown error")
-                print(f"Places API error: {error_message}")
-                return {"error": f"API error: {api_status} - {error_message}"}
 
-            if not place_data.get("results"):
+            if not place_data.get("places"):
                 print(f"No places found for query: '{query}'")
                 return {"error": "No places found."}
 
-            place_details = place_data["results"][0]
-            place_id = place_details["place_id"]
-            place_name = place_details["name"]
-            place_address = place_details["formatted_address"]
+            place_details = place_data["places"][0]
+            place_id = place_details.get("id", "")
+            place_name = place_details.get("displayName", {}).get("text", "")
+            place_address = place_details.get("formattedAddress", "")
             photos = self.get_photo_urls(place_details.get("photos", []), maxwidth=400)
             map_url = self.get_map_url(place_id)
-            location = place_details["geometry"]["location"]
-            lat = str(location["lat"])
-            lng = str(location["lng"])
+            location = place_details.get("location", {})
+            lat = str(location.get("latitude", ""))
+            lng = str(location.get("longitude", ""))
 
             print(f"Found place: {place_name} at {place_address}")
             return {
@@ -93,12 +80,15 @@ class PlacesService:
         except requests.exceptions.RequestException as e:
             print(f"Request exception: {e}")
             return {"error": f"Error fetching place data: {e}"}
+
     def get_photo_urls(self, photos: List[Dict[str, Any]], maxwidth: int = 400) -> List[str]:
-        """Extracts photo URLs from the 'photos' list."""
+        """Extracts photo URLs from the new API photo resources."""
         photo_urls = []
         for photo in photos:
-            photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth={maxwidth}&photoreference={photo['photo_reference']}&key={self.places_api_key}"
-            photo_urls.append(photo_url)
+            photo_name = photo.get("name", "")
+            if photo_name:
+                photo_url = f"https://places.googleapis.com/v1/{photo_name}/media?maxWidthPx={maxwidth}&key={self.places_api_key}"
+                photo_urls.append(photo_url)
         return photo_urls
 
     def get_map_url(self, place_id: str) -> str:
