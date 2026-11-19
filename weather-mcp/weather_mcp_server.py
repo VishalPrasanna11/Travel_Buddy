@@ -11,11 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Create MCP server instance
-mcp = FastMCP(
-    name="WeatherForecastServer",
-    description="Provides global weather forecasts and current weather conditions",
-    version="1.2.0"
-)
+mcp = FastMCP("WeatherForecastServer")
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
@@ -327,7 +323,7 @@ def get_weather(location: str, api_key: str, timezone_offset: float = 0) -> Dict
     weather_data = get_weather_forecast(location, timezone_offset, api_key)
 
     # Generate natural language weather report
-    report = weather_agent.run({
+    report = weather_agent.invoke({
         "location": location,
         "temperature": weather_data['current']['temperature'],
         "weather_condition": weather_data['current']['weather_condition'],
@@ -355,7 +351,7 @@ def get_current_weather(location: str, api_key: str, timezone_offset: float = 0)
     weather_data = get_weather_forecast(location, timezone_offset, api_key)
 
     # Generate natural language weather report
-    report = weather_agent.run({
+    report = weather_agent.invoke({
         "location": location,
         "temperature": weather_data['current']['temperature'],
         "weather_condition": weather_data['current']['weather_condition'],

@@ -27,10 +27,10 @@ def flight_search_agent(*, input_str: str) -> Dict[str, Any]:
         logger.info(f"🔍 Received input_str: {input_str}")
 
         # Parse the input string (either directly or preprocess with LLM in the other file)
-        if re.search(r"from=.*&to=.*&departureDate=", input_str):
+        if re.search(r"(from=.*&to=.*&departureDate=|origin=.*&destination=.*&departure_date=)", input_str):
             # Already in structured format - use the flight_search tool directly
             logger.info(f"🔧 Using flight_search tool with input: {input_str}")
-            api_data = flight_search(input_str)
+            api_data = flight_search.invoke(input_str)
             
             # Check if there was an error
             if "error" in api_data:

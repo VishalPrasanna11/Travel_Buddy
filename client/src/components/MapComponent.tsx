@@ -1,7 +1,5 @@
-// MapComponent.tsx with black pin markers
-
-import { useEffect, useRef, useState } from "react";
-import { Loader } from "@googlemaps/js-api-loader";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { Skeleton } from "./ui/skeleton";
 
 interface MapComponentProps {
@@ -18,8 +16,19 @@ interface MapComponentProps {
   onMapClick?: (location: { lat: number; lng: number }) => void;
 }
 
+let optionsSet = false;
+
+function makePinSvg(fill: string, size: number) {
+  return `data:image/svg+xml,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">
+      <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z" fill="${fill}" stroke="${fill}" stroke-width="2"/>
+      <circle cx="12" cy="10" r="3" fill="white" stroke="white" stroke-width="2"/>
+    </svg>
+  `)}`;
+}
+
 export default function MapComponent({
-  center = { lat: 40.7128, lng: -74.006 }, // Default to New York City
+  center = { lat: 40.7128, lng: -74.006 },
   zoom = 10,
   markers = [],
   height = "100%",
@@ -30,8 +39,9 @@ export default function MapComponent({
   const [loading, setLoading] = useState(true);
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [mapMarkers, setMapMarkers] = useState<google.maps.Marker[]>([]);
+  const stableMarkers = useMemo(() => markers, [JSON.stringify(markers)]);
+  const stableCenter = useMemo(() => center, [center.lat, center.lng]);
 
-  // Initialize the map
   useEffect(() => {
     const initializeMap = async () => {
       if (!mapRef.current) return;
@@ -44,14 +54,15 @@ export default function MapComponent({
           return;
         }
 
-        const loader = new Loader({
-          apiKey,
-          version: "weekly",
-          libraries: ["places"],
-        });
+        if (!optionsSet) {
+          setOptions({ apiKey, version: "weekly" });
+          optionsSet = true;
+        }
 
-        const googleMaps = await loader.load();
-        const map = new googleMaps.maps.Map(mapRef.current, {
+        const { Map } = await importLibrary("maps") as google.maps.MapsLibrary;
+        await importLibrary("places");
+
+        const map = new Map(mapRef.current, {
           center,
           zoom,
           mapTypeControl: true,
@@ -82,89 +93,36 @@ export default function MapComponent({
     initializeMap();
   }, []);
 
-  // Update markers when they change
   useEffect(() => {
     if (!mapInstance) return;
 
-    // Clear existing markers
     mapMarkers.forEach((marker) => marker.setMap(null));
-    setMapMarkers([]);
 
-    // Add new markers with custom styling
-    const newMarkers = markers.map((markerData) => {
-      // Set up marker options
-      let markerOptions: google.maps.MarkerOptions = {
+    const iconConfig: Record<string, { fill: string; size: number }> = {
+      primary: { fill: "black", size: 36 },
+      secondary: { fill: "#4B5563", size: 30 },
+      reference: { fill: "#9CA3AF", size: 24 },
+    };
+
+    const newMarkers = stableMarkers.map((markerData) => {
+      const cfg = iconConfig[markerData.type || "primary"] || iconConfig.primary;
+
+      const marker = new google.maps.Marker({
         position: { lat: markerData.lat, lng: markerData.lng },
         map: mapInstance,
-        title: markerData.title || 'Location',
+        title: markerData.title || "Location",
         animation: google.maps.Animation.DROP,
-      };
+        icon: {
+          url: makePinSvg(cfg.fill, cfg.size),
+          scaledSize: new google.maps.Size(cfg.size, cfg.size),
+          anchor: new google.maps.Point(cfg.size / 2, cfg.size),
+        },
+      });
 
-      // Apply different styles based on marker type
-      if (markerData.type) {
-        switch (markerData.type) {
-          case 'primary':
-            // Black pin for primary locations
-            markerOptions.icon = {
-              // Map pin SVG
-              url: `data:image/svg+xml,${encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z" fill="black" stroke="black"/>
-                  <circle cx="12" cy="10" r="3" fill="white" stroke="white"/>
-                </svg>
-              `)}`,
-              scaledSize: new google.maps.Size(36, 36),
-              anchor: new google.maps.Point(18, 36), // Bottom middle of the pin
-            };
-            break;
-          case 'secondary':
-            // Gray pin for secondary locations
-            markerOptions.icon = {
-              url: `data:image/svg+xml,${encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z" fill="#4B5563" stroke="#4B5563"/>
-                  <circle cx="12" cy="10" r="3" fill="white" stroke="white"/>
-                </svg>
-              `)}`,
-              scaledSize: new google.maps.Size(30, 30),
-              anchor: new google.maps.Point(15, 30), // Bottom middle of the pin
-            };
-            break;
-          case 'reference':
-            // Smaller light gray pin for reference locations
-            markerOptions.icon = {
-              url: `data:image/svg+xml,${encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z" fill="#9CA3AF" stroke="#9CA3AF"/>
-                  <circle cx="12" cy="10" r="3" fill="white" stroke="white"/>
-                </svg>
-              `)}`,
-              scaledSize: new google.maps.Size(24, 24),
-              anchor: new google.maps.Point(12, 24), // Bottom middle of the pin
-            };
-            break;
-        }
-      } else {
-        // Default black pin if no type specified
-        markerOptions.icon = {
-          url: `data:image/svg+xml,${encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z" fill="black" stroke="black"/>
-              <circle cx="12" cy="10" r="3" fill="white" stroke="white"/>
-            </svg>
-          `)}`,
-          scaledSize: new google.maps.Size(36, 36),
-          anchor: new google.maps.Point(18, 36), // Bottom middle of the pin
-        };
-      }
-
-      const marker = new google.maps.Marker(markerOptions);
-
-      // Add info window
       const infoWindow = new google.maps.InfoWindow({
         content: `
           <div style="padding: 8px; max-width: 200px;">
-            <h3 style="font-weight: bold; margin-bottom: 4px;">${markerData.title || 'Location'}</h3>
+            <h3 style="font-weight: bold; margin-bottom: 4px;">${markerData.title || "Location"}</h3>
             <p style="font-size: 12px; margin: 0;">
               Lat: ${markerData.lat.toFixed(4)}, Lng: ${markerData.lng.toFixed(4)}
             </p>
@@ -172,7 +130,7 @@ export default function MapComponent({
         `,
       });
 
-      marker.addListener('click', () => {
+      marker.addListener("click", () => {
         infoWindow.open(mapInstance, marker);
       });
 
@@ -181,32 +139,24 @@ export default function MapComponent({
 
     setMapMarkers(newMarkers);
 
-    // Fit bounds if we have markers
     if (newMarkers.length > 0) {
       const bounds = new google.maps.LatLngBounds();
-      markers.forEach((marker) => {
-        bounds.extend({ lat: marker.lat, lng: marker.lng });
-      });
+      stableMarkers.forEach((m) => bounds.extend({ lat: m.lat, lng: m.lng }));
       mapInstance.fitBounds(bounds);
-      
-      // Adjust zoom if too zoomed in (e.g., if only one marker)
-      // Fixed the TypeScript error by using optional chaining and nullish coalescing
-      google.maps.event.addListenerOnce(mapInstance, 'bounds_changed', () => {
+
+      google.maps.event.addListenerOnce(mapInstance, "bounds_changed", () => {
         const currentZoom = mapInstance?.getZoom() ?? 0;
-        if (currentZoom > 15) {
-          mapInstance.setZoom(15);
-        }
+        if (currentZoom > 15) mapInstance.setZoom(15);
       });
     }
-  }, [mapInstance, markers]);
+  }, [mapInstance, stableMarkers]);
 
-  // Update center when it changes
   useEffect(() => {
-    if (mapInstance && center) {
-      mapInstance.setCenter(center);
+    if (mapInstance && stableCenter) {
+      mapInstance.setCenter(stableCenter);
       mapInstance.setZoom(zoom);
     }
-  }, [mapInstance, center, zoom]);
+  }, [mapInstance, stableCenter, zoom]);
 
   return (
     <div className="relative w-full h-full">
@@ -219,14 +169,3 @@ export default function MapComponent({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-

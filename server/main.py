@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import os
 import logging
 from dotenv import load_dotenv
@@ -25,20 +27,11 @@ load_dotenv()
 async def lifespan(app):
     logger.info("Starting up the application...")
     try:
-        import snowflake.connector
-
-        ctx = snowflake.connector.connect(
-            user=os.getenv("SNOWFLAKE_USER"),
-            password=os.getenv("SNOWFLAKE_PASSWORD"),
-            account=os.getenv("SNOWFLAKE_ACCOUNT"),
-            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
-            database=os.getenv("SNOWFLAKE_DATABASE"),
-            schema=os.getenv("SNOWFLAKE_SCHEMA"),
-        )
-        ctx.close()
-        logger.info("Successfully connected to Snowflake")
+        from tools.routestack_auth import get_token
+        get_token()
+        logger.info("Successfully authenticated with RouteStack API")
     except Exception as e:
-        logger.error(f"Failed to connect to Snowflake: {str(e)}")
+        logger.warning(f"RouteStack auth check failed (will retry on first request): {str(e)}")
     yield
 
 
@@ -53,6 +46,7 @@ origins = [
     "http://localhost:3000",
     "http://localhost:8000",
     os.getenv("FRONTEND_URL", ""),
+    "https://travelbuddyai-5b869d0b00e5.herokuapp.com",
 ]
 
 app.add_middleware(
@@ -71,13 +65,25 @@ app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(flight_router, prefix="/api/flights", tags=["flights"])
 
 
-@app.get("/", tags=["root"])
-async def root():
+@app.get("/api/health", tags=["root"])
+async def health():
     return {
         "message": "Welcome to TravelBuddy API",
         "version": "1.0.0",
         "status": "online",
     }
+
+# Serve React static build if the directory exists (Heroku production)
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(_static_dir):
+    app.mount("/assets", StaticFiles(directory=os.path.join(_static_dir, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        file_path = os.path.join(_static_dir, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(_static_dir, "index.html"))
 
 
 if __name__ == "__main__":

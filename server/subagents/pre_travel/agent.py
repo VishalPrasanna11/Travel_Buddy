@@ -5,7 +5,7 @@ from langgraph.graph import StateGraph, END
 from tools.web_search import google_search_grounding
 from subagents.pre_travel.prompt import PRETRIP_AGENT_INSTR
 from subagents.types import PackingList
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
 # State structure

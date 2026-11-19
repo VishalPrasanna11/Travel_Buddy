@@ -4,6 +4,8 @@ services:
       context: ./server
       dockerfile: Dockerfile
     container_name: travel-buddy-server
+    depends_on:
+      - postgres
     ports:
       - "8000:8000"
     environment:
@@ -23,13 +25,10 @@ services:
       - GOOGLE_PLACE_API_KEY=${GOOGLE_PLACE_API_KEY}
       - WEATHER_API_KEY=${WEATHER_API_KEY}
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
-      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT}
-      - SNOWFLAKE_USER=${SNOWFLAKE_USER}
-      - SNOWFLAKE_PASSWORD=${SNOWFLAKE_PASSWORD}
-      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE}
-      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE}
-      - SNOWFLAKE_ROLE=${SNOWFLAKE_ROLE}
-      - SNOWFLAKE_SCHEMA_DBT=${SNOWFLAKE_SCHEMA_DBT}
+      - ROUTESTACK_API_KEY=${ROUTESTACK_API_KEY}
+      - ROUTESTACK_API_SECRET=${ROUTESTACK_API_SECRET}
+      - ROUTESTACK_BASE_URL=${ROUTESTACK_BASE_URL:-https://mcp.routestack.ai}
+      - GOOGLE_CSE_ID=${GOOGLE_CSE_ID}
       - OPENWEATHER_API_URL=${OPENWEATHER_API_URL}
     volumes:
       - ./server:/app
@@ -58,6 +57,21 @@ services:
       - travel-buddy-network
     restart: unless-stopped
   
+  postgres:
+    image: postgres:16-alpine
+    container_name: travel-buddy-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=travelbuddy
+      - POSTGRES_PASSWORD=travelbuddy
+      - POSTGRES_DB=travelbuddy
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - travel-buddy-network
+    restart: unless-stopped
+
   weather-mcp:
     build:
       context: ./weather-mcp
@@ -69,11 +83,15 @@ services:
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
       - WEATHER_API_KEY=${WEATHER_API_KEY}
       - OPENWEATHER_API_URL=${OPENWEATHER_API_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - ./weather-mcp:/app
     networks:
       - travel-buddy-network
     restart: unless-stopped
+
+volumes:
+  postgres_data:
 
 networks:
   travel-buddy-network:

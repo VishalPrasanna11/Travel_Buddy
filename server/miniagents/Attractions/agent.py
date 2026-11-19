@@ -40,7 +40,7 @@ def search_attractions(params: Dict[str, Any]) -> Dict[str, Any]:
         
         try:
             # Use the explore_places tool to find attractions
-            result = explore_places(query)
+            result = explore_places.invoke(query)
             
             if "error" in result:
                 logger.error(f"❌ Attraction search error: {result['error']}")

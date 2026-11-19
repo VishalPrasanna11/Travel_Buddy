@@ -44,7 +44,7 @@ def restaurant_search_agent(*, input_str: str) -> Dict[str, Any]:
         if "location=" in input_str:
             # Already in structured format - use directly
             logger.info(f"🔧 Using structured input: {input_str}")
-            result = search_restaurants(input_str)
+            result = search_restaurants.invoke(input_str)
         else:
             # For natural language input, try to extract the location
             location_match = re.search(r"(?:in|at|near|around)\s+([A-Za-z\s,]+)", input_str)
@@ -52,7 +52,7 @@ def restaurant_search_agent(*, input_str: str) -> Dict[str, Any]:
                 location = location_match.group(1).strip()
                 logger.info(f"🔧 Extracted location: {location}")
                 structured_input = f"location={location}"
-                result = search_restaurants(structured_input)
+                result = search_restaurants.invoke(structured_input)
             else:
                 error_result = {
                     "error": "Could not determine location from input. Please specify a location.",

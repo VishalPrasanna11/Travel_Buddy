@@ -1,0 +1,10 @@
+build:
+  docker:
+    web: Dockerfile
+  config:
+    VITE_AUTH0_DOMAIN: travelbuddyai.us.auth0.com
+    VITE_AUTH0_CLIENT_ID: hIMH5DIfndTUfERVneLStLETn43bQ5X0
+    VITE_AUTH0_REDIRECT_URI: https://travelbuddyai-5b869d0b00e5.herokuapp.com
+    VITE_AUTH0_AUDIENCE: https://travelbuddy-api
+    VITE_BASE_URL: https://travelbuddyai-5b869d0b00e5.herokuapp.com
+    VITE_GOOGLE_MAPS_API_KEY: AIzaSyDAgxX09y6ZjPkdI2F_kSwHK-pBsD0N6bo
