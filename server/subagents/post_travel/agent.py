@@ -2,7 +2,7 @@
 
 from langchain_openai import ChatOpenAI
 from langchain.agents import Tool, AgentExecutor, create_openai_tools_agent
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 from subagents.post_travel import prompt
 from tools.memory import memorize

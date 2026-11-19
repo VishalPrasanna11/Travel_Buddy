@@ -1,6 +1,6 @@
 //trial - g
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
 // Updated Location interface
 export interface Location {
@@ -37,55 +37,55 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [savedLocations, setSavedLocations] = useState<Location[]>([]);
 
   // Add new detected locations
-  const addDetectedLocations = (locations: Location[]) => {
-    // Merge with existing, avoid duplicates, keep highest relevance score
-    const merged = [...detectedLocations];
-    
-    locations.forEach(newLoc => {
-      const existingIndex = merged.findIndex(loc => 
-        loc.name === newLoc.name || 
-        (newLoc.lat != null && 
-         newLoc.lng != null && 
-         loc.lat != null && 
-         loc.lng != null && 
-         Math.abs(loc.lat - newLoc.lat) < 0.0001 && 
-         Math.abs(loc.lng - newLoc.lng) < 0.0001)
-      );
-      
-      if (existingIndex >= 0) {
-        // Update existing with higher relevance if applicable
-        if ((newLoc.relevanceScore || 0) > (merged[existingIndex].relevanceScore || 0)) {
-          merged[existingIndex] = {
-            ...merged[existingIndex],
-            relevanceScore: newLoc.relevanceScore,
-            type: newLoc.type || merged[existingIndex].type
-          };
+  const addDetectedLocations = useCallback((locations: Location[]) => {
+    setDetectedLocations(prev => {
+      const merged = [...prev];
+
+      locations.forEach(newLoc => {
+        const existingIndex = merged.findIndex(loc =>
+          loc.name === newLoc.name ||
+          (newLoc.lat != null &&
+           newLoc.lng != null &&
+           loc.lat != null &&
+           loc.lng != null &&
+           Math.abs(loc.lat - newLoc.lat) < 0.0001 &&
+           Math.abs(loc.lng - newLoc.lng) < 0.0001)
+        );
+
+        if (existingIndex >= 0) {
+          if ((newLoc.relevanceScore || 0) > (merged[existingIndex].relevanceScore || 0)) {
+            merged[existingIndex] = {
+              ...merged[existingIndex],
+              relevanceScore: newLoc.relevanceScore,
+              type: newLoc.type || merged[existingIndex].type
+            };
+          }
+        } else {
+          merged.push(newLoc);
         }
-      } else {
-        // Add new location
-        merged.push(newLoc);
-      }
+      });
+
+      return merged;
     });
-    
-    setDetectedLocations(merged);
-  };
+  }, []);
 
   // Clear all detected locations
-  const clearDetectedLocations = () => {
+  const clearDetectedLocations = useCallback(() => {
     setDetectedLocations([]);
-  };
+  }, []);
 
   // Add a location to saved locations
-  const addSavedLocation = (location: Location) => {
-    if (!savedLocations.some(loc => loc.name === location.name)) {
-      setSavedLocations([...savedLocations, location]);
-    }
-  };
+  const addSavedLocation = useCallback((location: Location) => {
+    setSavedLocations(prev => {
+      if (prev.some(loc => loc.name === location.name)) return prev;
+      return [...prev, location];
+    });
+  }, []);
 
   // Remove a location from saved locations
-  const removeSavedLocation = (locationName: string) => {
-    setSavedLocations(savedLocations.filter(loc => loc.name !== locationName));
-  };
+  const removeSavedLocation = useCallback((locationName: string) => {
+    setSavedLocations(prev => prev.filter(loc => loc.name !== locationName));
+  }, []);
 
   return (
     <LocationContext.Provider

@@ -566,13 +566,13 @@ def planning_agent_node(state: PlanningAgentState) -> PlanningAgentState:
     End with "Please let me know if you need more information or assistance with booking!"
 
     Examples:
-    - "Find flights from Boston to Tokyo on May 15" 
-    - "from=Boston&to=Tokyo&departureDate=2025-05-15&adults=2"
+    - "Find flights from Boston to Tokyo on May 15"
+    - "origin=Boston&destination=Tokyo&departure_date=2027-05-15&adults=2"
 
 
     Use `hotel_search_agent` to search for hotels. Examples:
     - "Find hotels in Tokyo from May 15 to May 20 for 2 adults"
-    - "city=Tokyo&checkInDate=2025-05-15&checkOutDate=2025-05-20&adults=2"
+    - "city=Tokyo&checkInDate=2027-05-15&checkOutDate=2027-05-20&adults=2"
 
     Use `restaurant_search_agent` to find restaurants, with output formatted as:
 
@@ -598,10 +598,10 @@ def planning_agent_node(state: PlanningAgentState) -> PlanningAgentState:
     - "location=Paris&attraction_type=museums"
 
     Use `itinerary_agent` to create complete travel plans. Examples:
-    - "Plan a 5-day trip to Rome from New York in June 2025"
-    - "destination=Rome&startDate=2025-06-10&endDate=2025-06-15&origin=New York&travelers=2"
+    - "Plan a 5-day trip to Rome from New York in June 2027"
+    - "destination=Rome&startDate=2027-06-10&endDate=2027-06-15&origin=New York&travelers=2"
 
-    IMPORTANT: All date parameters must use years 2025 or later only.
+    IMPORTANT: When the user does not specify a year, default to the next occurrence of that date in the future. Never reject a date that the user explicitly provided — just pass it through to the tool. The tools will handle date validation if needed.
 
     Based on the query, determine which tool(s) to use and respond appropriately.
     Return results cleanly and clearly.
@@ -755,161 +755,79 @@ def planning_agent_node(state: PlanningAgentState) -> PlanningAgentState:
 #         logger.error(traceback.format_exc())
 #         return {"error": f"Error processing itinerary query: {str(e)}"}
 
-# ------------------ Execute Tool Function ------------------ #
-def execute_tool(tool_func, state: PlanningAgentState, tool_key: str) -> PlanningAgentState:
-    """Execute the tool with extracted arguments"""
+# ------------------ Execute All Tools Function ------------------ #
+def execute_all_tools(state: PlanningAgentState) -> PlanningAgentState:
+    """Execute ALL pending tool calls and append ToolMessages for each one."""
     for call in state["tools"]:
-        if call["name"] == tool_key and call["id"] in state.get("last_tool_call_ids", []):
-            try:
-                # Try multiple possible locations for arguments
-                args = {}
-                
-                # Option 1: Check for "args" key (as seen in logs)
-                if "args" in call and call["args"]:
-                    args = call["args"]
-                    logger.info(f"📦 Using arguments from 'args' key: {args}")
-                
-                # Option 2: Check for "arguments" key (as in original code)
-                elif "arguments" in call and call["arguments"]:
-                    args = call["arguments"]
-                    logger.info(f"📦 Using arguments from 'arguments' key: {args}")
-                
-                # If still empty, try one more approach - maybe it's nested?
-                if not args and isinstance(call.get("arguments", {}), dict):
-                    nested_args = call["arguments"].get("input_str")
-                    if nested_args:
-                        args = {"input_str": nested_args}
-                        logger.info(f"📦 Found arguments in nested structure: {args}")
-                
-                logger.info(f"🧪 Executing tool: {tool_key} with args: {args}")
-                
-                # Last resort - if we still don't have valid args, raise an error
-                if not args or "input_str" not in args:
-                    raise ValueError(f"Could not find required 'input_str' in args: {call}")
-                
-                # Check what kind of search we're doing and how to handle the input
-                input_str = args["input_str"]
-                
-                if tool_key == "flight_search_agent":
-                    # For flight searches
-                    if not input_str.startswith("from="):
-                        # Handle natural language input
-                        result = natural_language_flight_search_agent(input_str)
-                    else:
-                        # Handle structured input directly
-                        result = tool_func(**args)
-                
-                elif tool_key == "hotel_search_agent":
-                    # For hotel searches
-                    if not input_str.startswith("city="):
-                        # Handle natural language input
-                        result = natural_language_hotel_search_agent(input_str)
-                    else:
-                        # Handle structured input directly
-                        result = tool_func(**args)
-                
-                elif tool_key == "restaurant_search_agent":
-                    # For restaurant searches
-                    if not input_str.startswith("location="):
-                        # Handle natural language input
-                        result = natural_language_restaurant_search_agent(input_str)
-                    else:
-                        # Handle structured input directly
-                        result = tool_func(**args)
-                
-                elif tool_key == "attractions_search_agent":
-                    # For attractions searches
-                    if not input_str.startswith("location="):
-                        # Handle natural language input
-                        result = natural_language_attractions_search_agent(input_str)
-                    else:
-                        # Handle structured input directly
-                        result = tool_func(**args)
-                
-                elif tool_key == "itinerary_agent":
-                    # For itinerary creation
-                    if not input_str.startswith("destination="):
-                        # Handle natural language input
-                        result = natural_language_itinerary_agent(input_str)
-                    else:
-                        # Handle structured input directly
-                        result = tool_func(**args)
-                
-                else:
-                    # Unknown tool
-                    result = {"error": f"Unknown tool: {tool_key}"}
-                
-                # Check for and handle errors properly
-                if isinstance(result, dict) and "error" in result:
-                    error_message = result["error"]
-                    logger.warning(f"⚠️ Tool returned an error: {error_message}")
-                    
-                    # Ensure consistent structure for error responses
-                    standardized_error = {
-                        "error": error_message,
-                        "formatted_text": result.get("formatted_text", f"Error: {error_message}"),
-                        "status": "error"
-                    }
-                    
-                    # Ensure api_data is present and properly structured
-                    if "api_data" not in result:
-                        standardized_error["api_data"] = {
-                            "error": error_message,
-                            "status": "error"
-                        }
-                    else:
-                        standardized_error["api_data"] = result["api_data"]
-                        # Ensure error info exists in api_data
-                        if "error" not in standardized_error["api_data"]:
-                            standardized_error["api_data"]["error"] = error_message
-                            standardized_error["api_data"]["status"] = "error"
-                    
-                    logger.info(f"🚨 Sending standardized error response: {standardized_error}")
-                    state["messages"].append(
-                        ToolMessage(tool_call_id=call["id"], content=json.dumps(standardized_error))
-                    )
-                else:
-                    # Handle successful responses
-                    logger.info(f"✅ Tool returned: {result}")
-                    
-                    # Ensure all successful responses have a consistent structure
-                    if isinstance(result, dict):
-                        # Add status field if not present
-                        if "status" not in result:
-                            result["status"] = "success"
-                        
-                        # Ensure api_data exists for data flow
-                        if "api_data" not in result and any(k in result for k in ["flight", "flights", "hotels", "restaurants", "attractions", "itinerary"]):
-                            result["api_data"] = {}
-                            # Copy data to api_data for consistent structure
-                            for data_key in ["flight", "flights", "hotels", "restaurants", "attractions", "itinerary"]:
-                                if data_key in result:
-                                    result["api_data"][data_key] = result[data_key]
-                    
-                    state["messages"].append(
-                        ToolMessage(tool_call_id=call["id"], content=json.dumps(result))
-                    )
-                    
-            except Exception as e:
-                logger.error(f"❌ Tool execution error: {str(e)}")
-                logger.error(traceback.format_exc())
-                
-                error_message = f"Tool execution error: {str(e)}"
-                error_response = {
-                    "error": error_message,
-                    "formatted_text": f"❌ {error_message}",
-                    "status": "error",
-                    "api_data": {
-                        "error": error_message,
-                        "status": "error",
-                        "tool": tool_key
-                    }
-                }
-                
-                state["messages"].append(
-                    ToolMessage(tool_call_id=call["id"], content=json.dumps(error_response))
+        if call["id"] not in state.get("last_tool_call_ids", []):
+            continue
+
+        tool_key = call["name"]
+        tool_func = tool_funcs.get(tool_key)
+
+        if not tool_func:
+            state["messages"].append(
+                ToolMessage(
+                    tool_call_id=call["id"],
+                    content=json.dumps({"error": f"Unknown tool: {tool_key}", "status": "error"}),
                 )
-    
+            )
+            continue
+
+        try:
+            args = call.get("args") or call.get("arguments") or {}
+            if not args and isinstance(call.get("arguments", {}), dict):
+                nested = call["arguments"].get("input_str")
+                if nested:
+                    args = {"input_str": nested}
+
+            if not args or "input_str" not in args:
+                raise ValueError(f"Could not find required 'input_str' in args: {call}")
+
+            logger.info(f"🧪 Executing tool: {tool_key} with args: {args}")
+            result = tool_func(**args)
+
+            if isinstance(result, dict) and "error" in result:
+                error_message = result["error"]
+                logger.warning(f"⚠️ Tool returned an error: {error_message}")
+                standardized_error = {
+                    "error": error_message,
+                    "formatted_text": result.get("formatted_text", f"Error: {error_message}"),
+                    "status": "error",
+                    "api_data": result.get("api_data", {"error": error_message, "status": "error"}),
+                }
+                state["messages"].append(
+                    ToolMessage(tool_call_id=call["id"], content=json.dumps(standardized_error))
+                )
+            else:
+                logger.info(f"✅ Tool returned: {result}")
+                if isinstance(result, dict):
+                    if "status" not in result:
+                        result["status"] = "success"
+                    if "api_data" not in result:
+                        for data_key in ["flight", "flights", "hotels", "restaurants", "attractions", "itinerary"]:
+                            if data_key in result:
+                                result.setdefault("api_data", {})[data_key] = result[data_key]
+                state["messages"].append(
+                    ToolMessage(tool_call_id=call["id"], content=json.dumps(result))
+                )
+
+        except Exception as e:
+            logger.error(f"❌ Tool execution error: {str(e)}")
+            logger.error(traceback.format_exc())
+            error_response = {
+                "error": f"Tool execution error: {str(e)}",
+                "formatted_text": f"❌ Tool execution error: {str(e)}",
+                "status": "error",
+                "api_data": {"error": str(e), "status": "error", "tool": tool_key},
+            }
+            state["messages"].append(
+                ToolMessage(tool_call_id=call["id"], content=json.dumps(error_response))
+            )
+
+    state["tools"] = []
+    state["tool_names"] = []
+    state["last_tool_call_ids"] = []
     return state
 
 # ------------------ Graph Flow Control ------------------ #
@@ -917,20 +835,7 @@ def should_continue(state: PlanningAgentState) -> str:
     """Determine the next step based on tool calls"""
     if not state["tool_names"]:
         return "end"
-    
-    tool_name = state["tool_names"][0]
-    if tool_name == "flight_search_agent":
-        return "execute_flight"
-    elif tool_name == "hotel_search_agent":
-        return "execute_hotel"
-    elif tool_name == "restaurant_search_agent":
-        return "execute_restaurant"
-    elif tool_name == "attractions_search_agent":
-        return "execute_attractions"
-    elif tool_name == "itinerary_agent":
-        return "execute_itinerary"
-    else:
-        return "end"
+    return "execute_tools"
 
 # ------------------ LangGraph Setup ------------------ #
 def build_planning_agent_graph():
@@ -939,35 +844,23 @@ def build_planning_agent_graph():
     
     # Add nodes
     workflow.add_node("agent", planning_agent_node)
-    workflow.add_node("execute_flight", lambda s: execute_tool(flight_search_agent, s, "flight_search_agent"))
-    workflow.add_node("execute_hotel", lambda s: execute_tool(hotel_search_agent, s, "hotel_search_agent"))
-    workflow.add_node("execute_restaurant", lambda s: execute_tool(restaurant_search_agent, s, "restaurant_search_agent"))
-    workflow.add_node("execute_attractions", lambda s: execute_tool(attractions_search_agent, s, "attractions_search_agent"))
-    workflow.add_node("execute_itinerary", lambda s: execute_tool(itinerary_agent, s, "itinerary_agent"))
-    
+    workflow.add_node("execute_tools", execute_all_tools)
+
     # Set entry point
     workflow.set_entry_point("agent")
-    
+
     # Add conditional edges from agent node
     workflow.add_conditional_edges(
         "agent",
         should_continue,
         {
-            "execute_flight": "execute_flight",
-            "execute_hotel": "execute_hotel",
-            "execute_restaurant": "execute_restaurant",
-            "execute_attractions": "execute_attractions",
-            "execute_itinerary": "execute_itinerary",
+            "execute_tools": "execute_tools",
             "end": END
         }
     )
-    
-    # Add edges back to agent node
-    workflow.add_edge("execute_flight", "agent")
-    workflow.add_edge("execute_hotel", "agent")
-    workflow.add_edge("execute_restaurant", "agent")
-    workflow.add_edge("execute_attractions", "agent")
-    workflow.add_edge("execute_itinerary", "agent")
+
+    # After executing tools, go back to agent for the next LLM turn
+    workflow.add_edge("execute_tools", "agent")
     
     return workflow.compile()
 
@@ -981,22 +874,19 @@ class PlanningAgent:
         """Synchronous invocation of the agent"""
         user_input = inputs.get("input", "")
         weather_data = inputs.get("weather_data", {})
-        
-        
-                # Add weather data to the prompt if available
-        if weather_data and weather_data.get("report"):
-            weather_info = f"\n\nCurrent weather information: {weather_data.get('report')}"
-            initial_state["messages"].append(SystemMessage(content=weather_info))
-        final_state = self.graph.invoke(initial_state, config={"recursion_limit": 10})
-        
+
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
             "tools": [],
             "tool_names": [],
             "last_tool_call_ids": [],
             "weather_data": weather_data
-            
         }
+
+        if weather_data and weather_data.get("report"):
+            weather_info = f"\n\nCurrent weather information: {weather_data.get('report')}"
+            initial_state["messages"].append(SystemMessage(content=weather_info))
+
         final_state = self.graph.invoke(initial_state, config={"recursion_limit": 10})
 
         # Process the final state to extract the response
@@ -1041,23 +931,18 @@ class PlanningAgent:
             "last_tool_call_ids": [],
             "weather_data": weather_data
         }
-        
-        
+
         if weather_data and weather_data.get("report"):
             weather_info = f"\n\nCurrent weather information: {weather_data.get('report')}"
             initial_state["messages"].append(SystemMessage(content=weather_info))
-        final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})
-        
-        
-        
-        
+
         # Initialize response with default structure and status
         response = {
             "output": "Let me help you plan your trip.",
             "api_data": {},
             "status": "success"
         }
-        
+
         try:
             # Invoke the graph with the initial state
             final_state = await self.graph.ainvoke(initial_state, config={"recursion_limit": 10})

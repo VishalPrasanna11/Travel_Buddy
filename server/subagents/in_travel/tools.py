@@ -3,7 +3,7 @@ from typing import Dict, Any
 
 # Replace Google ADK's ReadonlyContext with LangChain's equivalent
 # from google.adk.agents.readonly_context import ReadonlyContext
-from langchain.callbacks.base import BaseCallbackHandler
+from langchain_core.callbacks import BaseCallbackHandler
 
 from subagents.in_travel import prompt
 from subagents import constants

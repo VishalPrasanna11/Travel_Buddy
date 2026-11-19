@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -17,4 +17,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
 # Run the server
-CMD ["python", "simplified_mcp_server.py"]
+CMD ["python", "weather_mcp_server.py"]

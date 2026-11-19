@@ -73,7 +73,7 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Instagram, Twitter, Facebook, Loader2, CheckCircle } from 'lucide-react';
+import { Globe, MessageCircle, Share2, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -191,13 +191,13 @@ const Footer = () => {
                         {/* Social media icons */}
                         <div className="flex gap-4 mt-4 md:mt-0">
                             <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-white hover:text-gray-300 transition-colors">
-                                <Instagram size={20} />
+                                <Globe size={20} />
                             </a>
                             <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-white hover:text-gray-300 transition-colors">
-                                <Twitter size={20} />
+                                <MessageCircle size={20} />
                             </a>
                             <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-white hover:text-gray-300 transition-colors">
-                                <Facebook size={20} />
+                                <Share2 size={20} />
                             </a>
                         </div>
                     </div>

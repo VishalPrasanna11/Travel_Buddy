@@ -2,19 +2,30 @@ from typing import Dict, Any, List, TypedDict, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import Tool
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_community.tools import DuckDuckGoSearchResults
+from langchain_google_community import GoogleSearchAPIWrapper
 from langgraph.graph import StateGraph, END
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-search_tool = DuckDuckGoSearchResults(num_results=5)
+_search_wrapper = None
+
+
+def _get_search_wrapper():
+    global _search_wrapper
+    if _search_wrapper is None:
+        _search_wrapper = GoogleSearchAPIWrapper(k=5)
+    return _search_wrapper
 
 
 def web_search_tool(query: str) -> str:
-    results = search_tool.run(query)
-    return results
+    wrapper = _get_search_wrapper()
+    results = wrapper.results(query, num_results=5)
+    formatted = []
+    for r in results:
+        formatted.append(f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}\nLink: {r.get('link', '')}")
+    return "\n\n".join(formatted) if formatted else "No results found."
 
 
 tools = [

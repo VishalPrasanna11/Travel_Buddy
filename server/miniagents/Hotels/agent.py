@@ -20,7 +20,7 @@ def hotel_search_agent(*, input_str: str) -> Dict[str, Any]:
         if re.search(r"city=.*&checkInDate=.*&checkOutDate=.*&adults=", input_str):
             # Already in structured format, use the hotel_search tool directly
             logger.info(f"🔧 Using structured input with hotel_search tool: {input_str}")
-            result = hotel_search(input_str)
+            result = hotel_search.invoke(input_str)
         else:
             # For natural language input, we need to call the LLM parser
             # This will be handled in the parent file that imports this module

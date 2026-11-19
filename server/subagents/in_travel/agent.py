@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 from langchain.agents import Tool, AgentExecutor, create_openai_tools_agent
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain.memory import ConversationBufferMemory
 
 # Import your existing prompt templates
