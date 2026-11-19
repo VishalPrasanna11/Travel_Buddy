@@ -96,14 +96,7 @@ def get_coordinates(location, api_key):
         if data and len(data) > 0:
             return data[0]['lat'], data[0]['lon']
 
-        # Fallback to current weather API if geocoding fails
-        print("Geocoding API failed, falling back to current weather API for coordinates")
-        fallback_url = f"https://api.openweathermap.org/data/2.5/weather?q={location}&appid={api_key}&units=metric"
-        response = requests.get(fallback_url)
-        response.raise_for_status()
-        data = response.json()
-
-        return data['coord']['lat'], data['coord']['lon']
+        raise ValueError(f"Could not geocode location: {location}")
     except Exception as e:
         print(f"Error getting coordinates: {str(e)}")
         raise
@@ -137,18 +130,9 @@ def get_weather_forecast(present_location, time_zone_offset, api_key=None):
         # Get geographic coordinates
         lat, lon = get_coordinates(present_location, api_key)
 
-        # Try One Call API 3.0 first
-        onecall_url_v3 = f"https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&appid={api_key}&units=metric"
-        
-        try:
-            response = requests.get(onecall_url_v3)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            print(f"Error with One Call API 3.0: {e}. Trying API 2.5...")
-            # Fall back to One Call API 2.5
-            onecall_url_v2 = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={api_key}&units=metric"
-            response = requests.get(onecall_url_v2)
-            response.raise_for_status()
+        onecall_url = f"https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&appid={api_key}&units=metric"
+        response = requests.get(onecall_url)
+        response.raise_for_status()
         data = response.json()
 
         # Set timezone

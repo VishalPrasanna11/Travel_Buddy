@@ -1,7 +1,0 @@
-.env
-myenv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.db        # Database files  

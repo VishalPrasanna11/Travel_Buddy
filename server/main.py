@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -19,10 +20,33 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+
+@asynccontextmanager
+async def lifespan(app):
+    logger.info("Starting up the application...")
+    try:
+        import snowflake.connector
+
+        ctx = snowflake.connector.connect(
+            user=os.getenv("SNOWFLAKE_USER"),
+            password=os.getenv("SNOWFLAKE_PASSWORD"),
+            account=os.getenv("SNOWFLAKE_ACCOUNT"),
+            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+            database=os.getenv("SNOWFLAKE_DATABASE"),
+            schema=os.getenv("SNOWFLAKE_SCHEMA"),
+        )
+        ctx.close()
+        logger.info("Successfully connected to Snowflake")
+    except Exception as e:
+        logger.error(f"Failed to connect to Snowflake: {str(e)}")
+    yield
+
+
 app = FastAPI(
     title="TravelBuddy API",
     description="AI-powered travel planning assistant API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 origins = [
@@ -54,26 +78,6 @@ async def root():
         "version": "1.0.0",
         "status": "online",
     }
-
-
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Starting up the application...")
-    try:
-        import snowflake.connector
-
-        ctx = snowflake.connector.connect(
-            user=os.getenv("SNOWFLAKE_USER"),
-            password=os.getenv("SNOWFLAKE_PASSWORD"),
-            account=os.getenv("SNOWFLAKE_ACCOUNT"),
-            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
-            database=os.getenv("SNOWFLAKE_DATABASE"),
-            schema=os.getenv("SNOWFLAKE_SCHEMA"),
-        )
-        ctx.close()
-        logger.info("Successfully connected to Snowflake")
-    except Exception as e:
-        logger.error(f"Failed to connect to Snowflake: {str(e)}")
 
 
 if __name__ == "__main__":
