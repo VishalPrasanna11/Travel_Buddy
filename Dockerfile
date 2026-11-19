@@ -22,7 +22,7 @@ ENV VITE_AUTH0_AUDIENCE=$VITE_AUTH0_AUDIENCE
 ENV VITE_BASE_URL=$VITE_BASE_URL
 ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 
-RUN npm run build
+RUN npx vite build
 
 # Stage 2: Python server + static client
 FROM python:3.11-slim
