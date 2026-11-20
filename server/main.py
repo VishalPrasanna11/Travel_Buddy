@@ -13,6 +13,7 @@ from routes.llm_chat_historyRoute import router as llm_chat_history_router
 from routes.geocodeRoute import router as geocode_router
 from routes.chatRoute import router as chat_router
 from routes.flightRoute import router as flight_router
+from routes.placesRoute import router as places_router
 from middlewares.errors import RequestIdMiddleware, install_error_handlers
 
 logging.basicConfig(
@@ -70,6 +71,7 @@ app.include_router(llm_chat_history_router, prefix="/api/user", tags=["user"])
 app.include_router(geocode_router, prefix="/api/maps", tags=["maps"])
 app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(flight_router, prefix="/api/flights", tags=["flights"])
+app.include_router(places_router, prefix="/api/places", tags=["places"])
 
 
 @app.get("/api/health", tags=["root"])

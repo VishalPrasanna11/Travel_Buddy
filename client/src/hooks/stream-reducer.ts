@@ -1,7 +1,7 @@
 import type { StreamEvent, TravelResponse } from "@/api/LLMApi";
 import type { ChatMessage, ResponseData, SectionKey, SectionStatus } from "@/components/chat/types";
 
-const DATA_KEYS = ["status", "location", "trip", "sections", "restaurants", "attractions", "attractions_list", "hotels", "flights", "cars", "weather"] as const;
+const DATA_KEYS = ["status", "location", "trip", "itinerary", "sections", "restaurants", "attractions", "attractions_list", "hotels", "flights", "cars", "weather"] as const;
 
 /** Keep only the structured fields we render; never the raw blob. */
 export function pickData(response: TravelResponse | Record<string, unknown>): ResponseData | undefined {
@@ -24,8 +24,10 @@ export function applyStreamEvent(msg: ChatMessage, ev: StreamEvent): ChatMessage
       const trip = (ev.data.trip ?? {}) as ResponseData["trip"];
       return { ...msg, data: { ...msg.data, trip: { ...msg.data?.trip, ...trip } } };
     }
-    case "trip":
-      return { ...msg, data: { ...msg.data, trip: { ...msg.data?.trip, ...(ev.data as ResponseData["trip"]) } } };
+    case "trip": {
+      const { destination, start_date, end_date } = ev.data as { destination?: NonNullable<ResponseData["trip"]>["destination"]; start_date?: string; end_date?: string };
+      return { ...msg, data: { ...msg.data, trip: { ...msg.data?.trip, ...(destination ? { destination } : {}), ...(start_date ? { start_date } : {}), ...(end_date ? { end_date } : {}) } } };
+    }
     case "section": {
       const { type, section } = ev.data;
       const status: SectionStatus = { status: section.status as SectionStatus["status"], count: section.count, message: section.message };

@@ -12,6 +12,8 @@ import { WeatherNote } from '@/components/chat/weather-note';
 import { AgentProgress } from '@/components/chat/agent-progress';
 import { Composer, type ComposerHandle } from '@/components/chat/composer';
 import { ChatWelcome } from '@/components/chat/chat-welcome';
+import { ItineraryView } from '@/components/chat/itinerary';
+import type { Location } from '@/components/LocationContext';
 import type { ChatMessage } from '@/components/chat/types';
 
 type ChatComponentProps = {
@@ -27,6 +29,7 @@ type ChatComponentProps = {
   onEdit: (errorId: string) => void;
   onNewTrip: () => void;
   onStop?: () => void;
+  onShowOnMap?: (pins: Location[], label: string) => void;
 };
 
 const NEAR_BOTTOM_PX = 120;
@@ -86,7 +89,7 @@ function ErrorTurn({ message, onRetry, onEdit, onNewTrip, disabled }: { message:
 
 export default function ChatComponent({
   messages, input, pending, pendingSince, ready,
-  onInputChange, onSend, onPick, onRetry, onEdit, onNewTrip, onStop,
+  onInputChange, onSend, onPick, onRetry, onEdit, onNewTrip, onStop, onShowOnMap,
 }: ChatComponentProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
@@ -197,6 +200,7 @@ export default function ChatComponent({
                       footer={<CopyButton content={m.content} copyMessage="Answer copied" label="Copy answer" />}
                     >
                       <AnswerMarkdown>{m.content}</AnswerMarkdown>
+                      <ItineraryView data={m.data} onShowOnMap={onShowOnMap} />
                       <WeatherNote data={m.data} answer={m.content} />
                       <ResultCards data={m.data} />
                     </MessageRow>

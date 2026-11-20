@@ -188,3 +188,32 @@ def answer(trip: Dict[str, Any], results: Dict[str, Any]) -> str:
         "**Day 3:** A slower day in Chiado and Baixa, with dinner at Taberna da Rua das Flores.\n\n"
         "Want me to add a Sintra day trip or look for cheaper hotels?"
     )
+
+
+def itinerary(state) -> Dict[str, Any]:
+    trip = state.get("trip") or {}
+    d = _DAYS
+    item = lambda slot, kind, ref, title, note=None, t=None: {"slot": slot, "kind": kind, "ref": ref, "title": title, "note": note, "start_time": t, "duration_minutes": None}
+    return {
+        "trip": {
+            "destination": {"name": "Lisbon, Portugal", "place_id": None, "lat": None, "lng": None, "timezone": "Europe/Lisbon"},
+            "origin": trip.get("origin"), "start_date": d[0], "end_date": d[3],
+            "travelers": {"adults": trip.get("adults") or 2, "children": 0},
+        },
+        "days": [
+            {"date": d[0], "title": "Fly out", "items": [item("evening", "flight", "fl_fixture01", "TAP Air Portugal BOS → LIS", "Overnight flight", "21:35")]},
+            {"date": d[1], "title": "Alfama and the castle", "items": [
+                item("morning", "hotel", "ht_fixture01", "Check in at Memmo Alfama", "Bags can be left before 15:00"),
+                item("afternoon", "place", "pl_fx_castelo", "São Jorge Castle", "Go late afternoon for the light"),
+                item("evening", "restaurant", "pl_fx_ramiro", "Dinner at Cervejaria Ramiro", "No reservations; expect a queue", "20:00")]},
+            {"date": d[2], "title": "Belém", "items": [
+                item("morning", "place", "pl_fx_jeronimos", "Jerónimos Monastery", "Book tickets ahead"),
+                item("afternoon", "place", "pl_fx_belem", "Belém Tower", "Closed Mondays"),
+                item("afternoon", "place", "pl_fx_lxf", "LX Factory"),
+                item("evening", "restaurant", "pl_fx_taberna", "Taberna da Rua das Flores")]},
+            {"date": d[3], "title": "Chiado and home", "items": [
+                item("morning", "free", None, "Coffee and a walk through Chiado"),
+                item("evening", "restaurant", "pl_fx_belcanto", "Farewell dinner at Belcanto", "Reserve weeks ahead", "19:30")]},
+        ],
+        "summary": "Four days: arrival, Alfama, Belém, and a slow Chiado finale.",
+    }

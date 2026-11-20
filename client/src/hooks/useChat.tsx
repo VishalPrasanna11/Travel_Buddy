@@ -33,7 +33,7 @@ export function locationsFromData(data?: ResponseData): Location[] {
 }
 
 /** Bearer token when signed in; never lets a slow token refresh block a question. */
-export async function bearerToken(isAuthenticated: boolean, get: () => Promise<string>): Promise<string | undefined> {
+export async function bearerToken(isAuthenticated: boolean, get: () => Promise<string | undefined>): Promise<string | undefined> {
   if (!isAuthenticated) return undefined;
   const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 5000));
   return Promise.race([get().catch(() => undefined), timeout]);
@@ -149,7 +149,7 @@ export function useChat(conversationId: string) {
       let pinned = 0;
 
       try {
-        const token = await bearerToken(isAuthenticated, getAccessTokenSilently);
+        const token = await bearerToken(isAuthenticated, () => getAccessTokenSilently());
         const stream = streamTravelQuestion(
           { query: userMessage.content, chat_history: historyFor(prior), conversation_id: forId, ...extra },
           { signal: controller.signal, token }

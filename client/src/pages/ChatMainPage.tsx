@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Map as MapIcon, Plus } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
-import { LocationProvider, useLocation as useMapLocations } from '@/components/LocationContext';
+import { LocationProvider, useLocation as useMapLocations, type Location } from '@/components/LocationContext';
 import { TravelMapComponent } from '@/components/TravelMapComponent';
 import ChatComponent from '@/components/ChatComponent';
 import { useChat } from '@/hooks/useChat';
@@ -12,11 +12,19 @@ import { cn } from '@/lib/utils';
 /** Router state other pages can pass to start a trip (see HomePage). */
 type LaunchState = { prompt?: string } | null;
 
-function ChatArea({ id, mapToggle }: { id: string; mapToggle: React.ReactNode }) {
+function ChatArea({ id, mapToggle, openMap }: { id: string; mapToggle: React.ReactNode; openMap: () => void }) {
   const navigate = useNavigate();
   const routerLocation = useLocation();
   const chat = useChat(id);
-  const { detectedLocations } = useMapLocations();
+  const { detectedLocations, clearDetectedLocations, addDetectedLocations, setSelectedLocation } = useMapLocations();
+
+  // "Day 2 on map": show just that day's stops.
+  const showOnMap = useCallback((pins: Location[]) => {
+    clearDetectedLocations();
+    setSelectedLocation(null);
+    addDetectedLocations(pins);
+    openMap();
+  }, [clearDetectedLocations, addDetectedLocations, setSelectedLocation, openMap]);
 
   const startNewTrip = useCallback(() => {
     navigate(`/chat/${uuidv4()}`, { viewTransition: true });
@@ -73,6 +81,7 @@ function ChatArea({ id, mapToggle }: { id: string; mapToggle: React.ReactNode })
         onEdit={chat.editFailed}
         onNewTrip={startNewTrip}
         onStop={chat.stop}
+        onShowOnMap={showOnMap}
       />
     </div>
   );
@@ -83,6 +92,7 @@ export default function ChatMainPage() {
   // Below xl (1280px) the map is opt-in so the conversation and composer keep the
   // full height. At xl and up, chat and map sit side by side.
   const [mapOpen, setMapOpen] = useState(false);
+  const openMap = useCallback(() => setMapOpen(true), []);
 
   const mapToggle = (
     <button
@@ -103,7 +113,7 @@ export default function ChatMainPage() {
       <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
         <section aria-label="Conversation" className="flex min-h-0 flex-1 flex-col xl:w-[55%] xl:flex-none xl:border-r">
           {/* key: a fresh chat state per conversation id */}
-          <ChatArea key={id} id={id} mapToggle={mapToggle} />
+          <ChatArea key={id} id={id} mapToggle={mapToggle} openMap={openMap} />
         </section>
         <section
           id="trip-map"

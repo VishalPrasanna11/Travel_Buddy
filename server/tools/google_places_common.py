@@ -14,18 +14,37 @@ logger = logging.getLogger("google_places")
 
 TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 
-SEARCH_FIELDS = [
-    "places.id",
-    "places.displayName",
-    "places.formattedAddress",
-    "places.rating",
-    "places.userRatingCount",
-    "places.types",
-    "places.primaryType",
-    "places.location",
-    "places.viewport",
-    "places.photos",
+DETAIL_FIELDS = [
+    "id",
+    "displayName",
+    "formattedAddress",
+    "rating",
+    "userRatingCount",
+    "types",
+    "primaryType",
+    "location",
+    "viewport",
+    "utcOffsetMinutes",
+    # photos includes photos.authorAttributions (required attribution)
+    "photos",
+    "regularOpeningHours",
+    "priceLevel",
+    "editorialSummary",
+    "websiteUri",
+    "googleMapsUri",
+    "reviews",
+    "internationalPhoneNumber",
 ]
+SEARCH_FIELDS = [f"places.{f}" for f in DETAIL_FIELDS]
+DETAILS_URL = "https://places.googleapis.com/v1/places/{place_id}"
+
+# photo ref -> author attributions, so the photo proxy can return them as a header
+_PHOTO_ATTRIBUTIONS: Dict[str, List[Dict[str, Any]]] = {}
+_MAX_ATTRIBUTIONS = 5000
+
+
+def attributions_for(ref: str) -> List[Dict[str, Any]]:
+    return _PHOTO_ATTRIBUTIONS.get(ref, [])
 
 PRICE_LEVELS = {
     "PRICE_LEVEL_FREE": 0,
@@ -41,10 +60,10 @@ def google_api_key() -> Optional[str]:
 
 
 def photo_url_for(ref: Optional[str], width: int = 640) -> Optional[str]:
-    """Client-facing photo URL (legacy: Google media URL)."""
+    """Client-facing photo URL: our proxy, never a keyed Google URL."""
     if not ref:
         return None
-    return f"https://places.googleapis.com/v1/{ref}/media?maxWidthPx={width}&key={google_api_key()}"
+    return f"/api/places/photo/{ref}?w={width}"
 
 
 def _latlng(raw: Optional[Dict[str, Any]]) -> Optional[LatLng]:
@@ -61,15 +80,15 @@ def normalize_place(raw: Dict[str, Any], kind: str = "attraction", fetched_at: O
         ref = p.get("name")
         if not ref:
             continue
-        photos.append(Photo(
-            ref=ref,
-            width=p.get("widthPx"),
-            height=p.get("heightPx"),
-            attributions=[
-                {"name": a.get("displayName"), "uri": a.get("uri")}
-                for a in p.get("authorAttributions") or []
-            ],
-        ))
+        attrs = [
+            {"name": a.get("displayName"), "uri": a.get("uri")}
+            for a in p.get("authorAttributions") or []
+        ]
+        if attrs and len(_PHOTO_ATTRIBUTIONS) < _MAX_ATTRIBUTIONS:
+            _PHOTO_ATTRIBUTIONS[ref] = attrs
+        photos.append(Photo(ref=ref, width=p.get("widthPx"), height=p.get("heightPx"), attributions=attrs))
+        if len(photos) >= 6:
+            break
     hours = raw.get("regularOpeningHours") or raw.get("currentOpeningHours")
     opening = None
     if hours:
@@ -116,7 +135,30 @@ def normalize_place(raw: Dict[str, Any], kind: str = "attraction", fetched_at: O
         photos=photos,
         reviews=reviews,
         photo_url=photo_url_for(photos[0].ref if photos else None, 400),
+        utc_offset_minutes=raw.get("utcOffsetMinutes"),
     )
+
+
+_DETAILS_CACHE: Dict[str, Place] = {}
+
+
+def place_details(place_id: str, api_key: str, kind: str = "attraction", timeout: float = 15) -> Optional[Place]:
+    """GET places/{id}: hours, reviews, editorial summary, website, phone."""
+    if place_id in _DETAILS_CACHE:
+        return _DETAILS_CACHE[place_id]
+    headers = {"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": ",".join(DETAIL_FIELDS)}
+    try:
+        resp = httpx.get(DETAILS_URL.format(place_id=place_id), headers=headers, timeout=timeout)
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+    except Exception as e:
+        logger.warning(f"Place details failed for {place_id}: {e}")
+        return None
+    place = normalize_place(resp.json(), kind)
+    if len(_DETAILS_CACHE) < 2000:
+        _DETAILS_CACHE[place_id] = place
+    return place
 
 
 def text_search(

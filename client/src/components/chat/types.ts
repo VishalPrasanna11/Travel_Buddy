@@ -174,6 +174,8 @@ export type SectionStatus = {
 
 export type TripDestination = {
   name: string
+  formatted_name?: string
+  address?: string
   place_id?: string
   lat?: number
   lng?: number
@@ -183,6 +185,7 @@ export type TripDestination = {
 
 export type Trip = {
   intent?: string
+  formatted_name?: string
   destination?: string | TripDestination
   origin?: string
   start_date?: string
@@ -192,8 +195,31 @@ export type Trip = {
   sections?: string[]
 }
 
+export type ItineraryItem = {
+  slot: "morning" | "afternoon" | "evening" | "night"
+  kind: "place" | "restaurant" | "hotel" | "flight" | "car" | "transit" | "free" | "note"
+  ref?: string | null
+  title: string
+  note?: string | null
+  start_time?: string | null
+  duration_minutes?: number | null
+}
+
+export type Itinerary = {
+  trip: {
+    destination: TripDestination
+    origin?: string | null
+    start_date: string
+    end_date: string
+    travelers?: { adults: number; children: number }
+  }
+  days: { date: string; title: string; items: ItineraryItem[] }[]
+  summary?: string
+}
+
 export type ResponseData = {
   status?: string
+  itinerary?: Itinerary
   location?: string
   trip?: Trip
   sections?: Partial<Record<SectionKey, SectionStatus>>
@@ -328,4 +354,27 @@ export function destinationOf(data?: ResponseData): TripDestination | null {
   const d = data?.trip?.destination
   if (!d) return null
   return typeof d === "string" ? { name: d } : d
+}
+
+/** Every entity in a response by id, for itinerary refs. */
+export function entityIndex(data?: ResponseData): Map<string, { kind: string; entity: Place | Hotel | Flight | CarRental }> {
+  const out = new Map<string, { kind: string; entity: Place | Hotel | Flight | CarRental }>()
+  const add = (kind: string, list: (Place | Hotel | Flight | CarRental)[]) => list.forEach((e) => e.id && out.set(e.id, { kind, entity: e }))
+  add("flight", flightsOf(data))
+  add("hotel", hotelsOf(data))
+  add("place", attractionsOf(data))
+  add("restaurant", restaurantsOf(data))
+  add("car", carsOf(data))
+  return out
+}
+
+const API_BASE_URL = import.meta.env.VITE_BASE_URL ?? ""
+
+/** Photo through the server proxy (no API key in the browser). */
+export function photoSrc(photos?: Photo[], legacyUrl?: string, width = 400): string | undefined {
+  const ref = photos?.find((p) => p.ref)?.ref
+  if (ref) return `${API_BASE_URL}/api/places/photo/${ref}?w=${width}`
+  const url = photos?.find((p) => p.url)?.url ?? legacyUrl
+  if (!url) return undefined
+  return url.startsWith("/") ? `${API_BASE_URL}${url}` : url
 }

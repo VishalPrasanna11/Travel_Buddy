@@ -31,7 +31,8 @@ from pydantic import BaseModel, Field
 from agents import fixtures
 from tools.flight_search import _search_flights
 from tools.google_places_api import perform_google_places_explore
-from tools.google_places_common import google_api_key
+from tools.google_places_common import google_api_key, normalize_place, text_search
+from schemas.itinerary import Itinerary
 from tools.google_restaurant_api import perform_google_restaurant_search
 from tools.hotel_search import _search_hotels
 from tools.weather_tool import weather_tool
@@ -75,7 +76,9 @@ class TravelState(TypedDict, total=False):
     prefs: Dict[str, Any]
     trip: Dict[str, Any]
     sections: Annotated[Dict[str, Any], merge_dicts]
+    destination: Dict[str, Any]
     answer: str
+    itinerary: Dict[str, Any]
     status: str
 
 
@@ -124,6 +127,15 @@ def _history_text(history: List[Dict[str, str]], limit: int = 6) -> str:
 
 _intake_llm = None
 _compose_llm = None
+_itinerary_llm = None
+
+
+def itinerary_llm():
+    global _itinerary_llm
+    if _itinerary_llm is None:
+        # response_format: {type: "json_schema", strict: true}
+        _itinerary_llm = ChatOpenAI(model="gpt-4o", temperature=0.2).with_structured_output(Itinerary, method="json_schema", strict=True)
+    return _itinerary_llm
 
 
 def intake_llm():
@@ -174,6 +186,54 @@ async def intake_node(state: TravelState) -> Dict[str, Any]:
     for s in planned:
         emit({"event": "agent", "agent": s, "state": "queued"})
     return {"trip": trip}
+
+
+# ------------------------------------------------------------ destination
+_GEOCODE_CACHE: Dict[str, Dict[str, Any]] = {}
+DEST_FIELDS = ["places.id", "places.displayName", "places.formattedAddress", "places.location", "places.viewport", "places.utcOffsetMinutes", "places.types"]
+
+
+def geocode_destination(name: str) -> Optional[Dict[str, Any]]:
+    """Destination geocode + suggested map bounds (Places Text Search viewport)."""
+    key = name.lower().strip()
+    if key in _GEOCODE_CACHE:
+        return _GEOCODE_CACHE[key]
+    api_key = google_api_key()
+    if not api_key:
+        return None
+    try:
+        results = text_search(name, api_key, fields=DEST_FIELDS, limit=1, timeout=8)
+    except Exception as e:
+        logger.warning(f"Destination geocode failed for {name}: {e}")
+        return None
+    if not results:
+        return None
+    place = normalize_place(results[0], "destination")
+    dest = {
+        "name": name,
+        "formatted_name": place.name,
+        "address": place.address,
+        "place_id": place.place_id,
+        "lat": place.location.lat if place.location else None,
+        "lng": place.location.lng if place.location else None,
+        "viewport": {k: v.model_dump() for k, v in place.viewport.items()} if place.viewport else None,
+        "utc_offset_minutes": place.utc_offset_minutes,
+    }
+    if len(_GEOCODE_CACHE) < 1000:
+        _GEOCODE_CACHE[key] = dest
+    return dest
+
+
+async def destination_node(state: TravelState) -> Dict[str, Any]:
+    trip = state.get("trip") or {}
+    name = trip.get("destination")
+    if not name:
+        return {}
+    dest = fixtures.destination() if use_fixtures() else await asyncio.to_thread(geocode_destination, name)
+    if not dest:
+        return {}
+    emit({"event": "trip", "destination": dest, "start_date": trip.get("start_date"), "end_date": trip.get("end_date")})
+    return {"destination": dest}
 
 
 # --------------------------------------------------------------- sections
@@ -350,7 +410,9 @@ def compact_results(sections: Dict[str, Any]) -> Dict[str, Any]:
         elif name in ("attractions", "restaurants"):
             entry["items"] = [
                 {"id": p["id"], "name": p.get("name"), "rating": p.get("rating"), "reviews": p.get("total_ratings"),
-                 "price_level": p.get("price_level"), "summary": p.get("editorial_summary")}
+                 "price_level": p.get("price_level"), "summary": p.get("editorial_summary"),
+                 "hours": ((p.get("opening_hours") or {}).get("weekday_descriptions") or None),
+                 "location": p.get("location")}
                 for p in items[:8]
             ]
         elif name == "weather":
@@ -367,18 +429,82 @@ def compact_results(sections: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+ITINERARY_PROMPT = """Build a structured day-by-day itinerary for this trip as JSON.
+Rules:
+- One entry in `days` per date from start_date to end_date inclusive.
+- Each day has 2-5 items across morning / afternoon / evening (night only if it fits).
+- Use places and restaurants from RESULTS and set `ref` to their exact `id`. Put the arrival flight
+  (ref = flight id) on the first day and the hotel check-in (ref = hotel id) on arrival day when they exist.
+- Group nearby places on the same day. Respect opening hours mentioned in RESULTS.
+- Use null for ref when an item isn't one of the RESULTS (e.g. "Stroll the riverfront").
+- Never include prices or numbers that aren't in RESULTS.
+- destination.timezone is the IANA zone for the destination."""
+
+
+def _known_ids(sections: Dict[str, Any]) -> Dict[str, str]:
+    kinds = {"flights": "flight", "hotels": "hotel", "attractions": "place", "restaurants": "restaurant", "cars": "car"}
+    out = {}
+    for name, sec in (sections or {}).items():
+        for item in sec.get("items") or []:
+            if isinstance(item, dict) and item.get("id") and name in kinds:
+                out[item["id"]] = kinds[name]
+    return out
+
+
+def clean_itinerary(it: Dict[str, Any], state: TravelState) -> Dict[str, Any]:
+    """Ground the model's itinerary in real data: verified geocode, valid refs only."""
+    known = _known_ids(state.get("sections") or {})
+    dest = state.get("destination") or {}
+    d = it.setdefault("trip", {}).setdefault("destination", {})
+    for k in ("place_id", "lat", "lng"):
+        if dest.get(k) is not None:
+            d[k] = dest[k]
+    if dest.get("viewport"):
+        d["viewport"] = dest["viewport"]
+    for day in it.get("days") or []:
+        for item in day.get("items") or []:
+            ref = item.get("ref")
+            if ref and ref not in known:
+                item["ref"] = None
+            elif ref:
+                item["kind"] = known[ref]
+    return it
+
+
+async def build_itinerary(state: TravelState, results: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    trip = state.get("trip") or {}
+    if trip.get("intent") != "plan_trip" or not trip.get("start_date") or not trip.get("destination"):
+        return None
+    if use_fixtures():
+        return clean_itinerary(fixtures.itinerary(state), state)
+    messages = [
+        SystemMessage(content=ITINERARY_PROMPT),
+        SystemMessage(content="TRIP: " + json.dumps({**trip, "destination_geocode": state.get("destination")}, default=str)),
+        SystemMessage(content="RESULTS: " + json.dumps(results, default=str)),
+        HumanMessage(content=state["user_input"]),
+    ]
+    try:
+        it: Itinerary = await itinerary_llm().ainvoke(messages)
+    except Exception as e:
+        logger.warning(f"Structured itinerary failed: {e}")
+        return None
+    return clean_itinerary(it.model_dump(), state)
+
+
 async def compose_node(state: TravelState) -> Dict[str, Any]:
     emit({"event": "agent", "agent": "compose", "state": "running"})
     trip = state.get("trip") or {}
     results = compact_results(state.get("sections") or {})
+    itinerary_task = asyncio.create_task(build_itinerary(state, results))
     if use_fixtures():
         answer = fixtures.answer(trip, results)
         # Stream the canned answer word by word like the model would.
         for word in answer.split(" "):
             emit({"event": "delta", "text": word + " "})
             await asyncio.sleep(0.01)
+        itinerary = await itinerary_task
         emit({"event": "agent", "agent": "compose", "state": "done"})
-        return {"answer": answer, "status": "success"}
+        return {"answer": answer, "itinerary": itinerary or {}, "status": "success"}
 
     messages = [
         SystemMessage(content=COMPOSE_PROMPT.format(today=state["today"])),
@@ -395,14 +521,16 @@ async def compose_node(state: TravelState) -> Dict[str, Any]:
         if text:
             chunks.append(text)
     answer = "".join(chunks).strip()
+    itinerary = await itinerary_task
     emit({"event": "agent", "agent": "compose", "state": "done"})
-    return {"answer": answer, "status": "success"}
+    return {"answer": answer, "itinerary": itinerary or {}, "status": "success"}
 
 
 # ------------------------------------------------------------------ graph
 def build_travel_graph():
     g = StateGraph(TravelState)
     g.add_node("intake", intake_node)
+    g.add_node("destination", destination_node)
     g.add_node("flights", flights_node)
     g.add_node("hotels", hotels_node)
     g.add_node("attractions", attractions_node)
@@ -410,7 +538,8 @@ def build_travel_graph():
     g.add_node("weather", weather_node)
     g.add_node("compose", compose_node)
     g.set_entry_point("intake")
-    g.add_edge("intake", "flights")
+    g.add_edge("intake", "destination")
+    g.add_edge("destination", "flights")
     g.add_edge("flights", "hotels")
     g.add_edge("hotels", "attractions")
     g.add_edge("attractions", "restaurants")
@@ -432,7 +561,9 @@ def initial_state(request_id: str, query: str, history: List[Dict[str, str]], pr
         "prefs": prefs or {},
         "trip": {},
         "sections": {},
+        "destination": {},
         "answer": "",
+        "itinerary": {},
         "status": "running",
     }
 
@@ -455,4 +586,8 @@ def final_payload(state: Dict[str, Any]) -> Dict[str, Any]:
             payload[name] = sections[name].get("items") or []
     if "weather" in sections:
         payload["weather"] = sections["weather"].get("forecast")
+    if state.get("destination"):
+        payload["trip"] = {**payload["trip"], "destination": state["destination"]}
+    if state.get("itinerary"):
+        payload["itinerary"] = state["itinerary"]
     return payload

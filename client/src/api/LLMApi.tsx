@@ -42,7 +42,7 @@ export class AskError extends Error {
  */
 export async function askTravelQuestion(
   question: TravelQuestion,
-  { signal }: { signal?: AbortSignal } = {}
+  { signal, token }: { signal?: AbortSignal; token?: string } = {}
 ): Promise<TravelResponse> {
   const requestData = {
     query: question.query,
@@ -51,7 +51,6 @@ export async function askTravelQuestion(
       content: msg.content || "",
     })),
     chat_id: question.chat_id || "",
-    user_email: question.user_email || "",
   };
 
   const timeout = new AbortController();
@@ -63,7 +62,7 @@ export async function askTravelQuestion(
   try {
     response = await fetch(`${API_BASE_URL}/api/llm/ask-question`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify(requestData),
       signal: timeout.signal,
     });
@@ -212,7 +211,7 @@ export async function* streamTravelQuestion(
   // Fallback: old endpoint, one JSON document.
   const legacy = await askTravelQuestion(
     { query: question.query, chat_history: question.chat_history, chat_id: question.conversation_id },
-    { signal }
+    { signal, token }
   );
   if (legacy.answer) yield { event: "delta", data: { text: legacy.answer } };
   yield { event: "final", data: { ...legacy, request_id: "" } };

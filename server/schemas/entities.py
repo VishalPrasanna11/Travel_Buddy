@@ -193,6 +193,7 @@ class Place(EntityBase):
     phone: Optional[str] = None
     photos: List[Photo] = Field(default_factory=list)
     reviews: List[Review] = Field(default_factory=list)
+    utc_offset_minutes: Optional[int] = None
     # Back-compat: older clients read photo_url. Always a proxy URL, never a keyed Google URL.
     photo_url: Optional[str] = None
 

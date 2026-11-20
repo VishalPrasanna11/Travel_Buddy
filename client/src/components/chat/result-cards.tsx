@@ -1,10 +1,10 @@
 import { useId, useState } from "react"
-import { BedDouble, Clock, Landmark, MapPin, Plane, Star, Utensils } from "lucide-react"
+import { AlertTriangle, BedDouble, Clock, ExternalLink, Globe, Landmark, MapPin, Plane, Star, Utensils } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Notice } from "@/components/ui/notice"
-import { attractionsOf, flightsOf, hotelsOf, restaurantsOf, type Flight, type Hotel, type Place, type Price, type ResponseData, type SectionKey, type SectionStatus } from "./types"
+import { attractionsOf, flightsOf, hotelsOf, photoSrc, restaurantsOf, type Flight, type Photo, type Hotel, type Place, type Price, type ResponseData, type SectionKey, type SectionStatus } from "./types"
 
 /**
  * Structured results that came back with an answer. Everything shown here is
@@ -29,8 +29,22 @@ export function fmtPrice(p?: Price, opts: { amount?: number } = {}) {
   }
 }
 
-function photoOf(p: Place) {
-  return p.photo_url
+const PRICE_LABEL = ["Free", "$", "$$", "$$$", "$$$$"]
+const PRICE_NAME = ["free", "inexpensive", "moderate", "expensive", "very expensive"]
+
+/** "Closed Mondays" from Google's weekday descriptions. */
+function closedDays(p: Place) {
+  return (p.opening_hours?.weekday_descriptions ?? [])
+    .filter((d) => /:\s*closed/i.test(d))
+    .map((d) => d.split(":")[0])
+}
+
+function todayHours(p: Place) {
+  const list = p.opening_hours?.weekday_descriptions
+  if (!list?.length) return null
+  // Google lists Monday first.
+  const idx = (new Date().getDay() + 6) % 7
+  return list[idx]?.split(/:\s(.+)/)[1] ?? null
 }
 
 function Rating({ value, count }: { value?: number | string; count?: number }) {
@@ -46,8 +60,11 @@ function Rating({ value, count }: { value?: number | string; count?: number }) {
   )
 }
 
-function PlacePhoto({ src, name, Icon }: { src?: string; name: string; Icon: typeof MapPin }) {
+function PlacePhoto({ photos, legacy, name, Icon }: { photos?: Photo[]; legacy?: string; name: string; Icon: typeof MapPin }) {
   const [failed, setFailed] = useState(false)
+  const src = photoSrc(photos, legacy, 480)
+  const photo = photos?.find((p) => p.ref || p.url)
+  const credit = photo?.attributions?.[0]
   if (!src || failed) {
     return (
       <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted" aria-hidden="true">
@@ -56,38 +73,78 @@ function PlacePhoto({ src, name, Icon }: { src?: string; name: string; Icon: typ
     )
   }
   return (
-    <img
-      src={src}
-      alt={`Photo of ${name}`}
-      width={400}
-      height={300}
-      loading="lazy"
-      decoding="async"
-      onError={() => setFailed(true)}
-      className="aspect-[4/3] w-full bg-muted object-cover"
-    />
+    <figure className="relative">
+      <img
+        src={src}
+        alt={`Photo of ${name}`}
+        width={photo?.width ? Math.min(photo.width, 480) : 400}
+        height={photo?.width && photo?.height ? Math.round((Math.min(photo.width, 480) / photo.width) * photo.height) : 300}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        className="aspect-[4/3] w-full bg-muted object-cover"
+      />
+      {credit?.name && (
+        <figcaption className="absolute bottom-1 right-1 max-w-[85%] truncate rounded bg-black/55 px-1.5 py-0.5 text-[0.6875rem] text-white">
+          {credit.uri ? (
+            <a href={credit.uri} target="_blank" rel="noopener noreferrer" className="hover:underline">Photo: {credit.name}</a>
+          ) : (
+            <>Photo: {credit.name}</>
+          )}
+        </figcaption>
+      )}
+    </figure>
   )
 }
 
 function PlaceCard({ place, Icon }: { place: Place; Icon: typeof MapPin }) {
+  const closed = closedDays(place)
+  const hours = todayHours(place)
   return (
-    <li className="group overflow-hidden rounded-xl border bg-card transition-colors hover:border-gray-strong">
-      <PlacePhoto src={photoOf(place)} name={place.name} Icon={Icon} />
-      <div className="space-y-1 p-3">
+    <li className="group flex flex-col overflow-hidden rounded-xl border bg-card transition-colors hover:border-gray-strong">
+      <PlacePhoto photos={place.photos} legacy={place.photo_url} name={place.name} Icon={Icon} />
+      <div className="flex flex-1 flex-col gap-1 p-3">
         <h5 className="line-clamp-2 font-display text-base font-semibold leading-snug" title={place.name}>
           {place.name}
         </h5>
-        <Rating value={place.rating} count={place.total_ratings} />
+        <div className="flex flex-wrap items-center gap-x-2">
+          <Rating value={place.rating} count={place.total_ratings} />
+          {place.price_level != null && (
+            <span className="text-meta font-medium text-ink tabular" title={`Price level: ${PRICE_NAME[place.price_level]}`}>
+              {PRICE_LABEL[place.price_level]}<span className="sr-only"> ({PRICE_NAME[place.price_level]})</span>
+            </span>
+          )}
+        </div>
+        {place.editorial_summary && <p className="line-clamp-3 text-sm text-ink">{place.editorial_summary}</p>}
+        {hours && <p className="text-meta text-muted-foreground"><Clock className="mr-1 inline size-3" aria-hidden="true" />Today: {hours}</p>}
+        {closed.length > 0 && closed.length < 7 && (
+          <p className="text-meta font-medium text-amber-ink">
+            <AlertTriangle className="mr-1 inline size-3" aria-hidden="true" />Closed {closed.join(", ")}
+          </p>
+        )}
         {place.address && <p className="line-clamp-2 text-meta text-muted-foreground">{place.address}</p>}
-        <a
-          href={mapsUrl(place)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-raspberry hover:text-raspberry-hover pointer-coarse:min-h-11"
-        >
-          <MapPin className="size-3.5" aria-hidden="true" />
-          Open in Google Maps<span className="sr-only"> (opens in a new tab)</span>
-        </a>
+        <div className="mt-auto flex flex-wrap gap-x-3 pt-1">
+          <a
+            href={mapsUrl(place)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-raspberry hover:text-raspberry-hover pointer-coarse:min-h-11"
+          >
+            <MapPin className="size-3.5" aria-hidden="true" />
+            Google Maps<span className="sr-only"> (opens in a new tab)</span>
+          </a>
+          {place.website && (
+            <a
+              href={place.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-raspberry hover:text-raspberry-hover pointer-coarse:min-h-11"
+            >
+              <Globe className="size-3.5" aria-hidden="true" />
+              Website<ExternalLink className="size-3" aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          )}
+        </div>
       </div>
     </li>
   )

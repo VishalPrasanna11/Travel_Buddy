@@ -10,41 +10,45 @@ from openai import OpenAI
 import asyncio
 import json
 import logging
+import os
+from middlewares.auth import Identity, optional_identity, resolve_email
 
 router = APIRouter()
 
 class QuestionRequest(BaseModel):
     query: str
     chat_id: Optional[str] = None
-    user_email: Optional[EmailStr] = None
+    # Ignored: identity comes from the bearer token. Kept so old clients still validate.
+    user_email: Optional[str] = None
     chat_history: Optional[List[Message]] = []
 
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "query": "What are popular tourist destinations in Japan?",
                 "chat_id": None,
-                "user_email": "user@example.com",
                 "chat_history": []
             }
         }
+    }
 
 @router.post("/ask-question")
 async def ask_question(
     request: QuestionRequest,
     openai_client: OpenAI = Depends(get_openai_client),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    ident: Optional[Identity] = Depends(optional_identity),
 ):
-    logging.info(f"Database connection available: {db is not None}")
-
+    """Legacy, non-streaming ask (keep-alive spaces, then one JSON document)."""
     controller = LLMController(openai_client)
+    user_email = resolve_email(ident, db)
 
     async def generate():
         task = asyncio.create_task(controller.ask_question(
             query=request.query,
             chat_history=request.chat_history,
             chat_id=request.chat_id,
-            user_email=request.user_email,
+            user_email=user_email,
             db=db
         ))
         # Send a space every 10s to keep Heroku's connection alive (30s first-byte timeout)
@@ -75,8 +79,12 @@ SSE_HEADERS = {
 }
 
 
+def anonymous_ask_allowed() -> bool:
+    return os.getenv("ALLOW_ANONYMOUS_ASK", "").lower() in ("1", "true", "yes")
+
+
 @router.post("/ask")
-async def ask_stream(payload: AskRequest, request: Request):
+async def ask_stream(payload: AskRequest, request: Request, ident: Optional[Identity] = Depends(optional_identity)):
     """
     Streaming ask (Server-Sent Events). Event types:
       meta     {request_id, schema_version}                       first, immediately
@@ -88,7 +96,9 @@ async def ask_stream(payload: AskRequest, request: Request):
       error    {code, message, retryable, section?, request_id}
     """
     request_id = request_id_of(request)
-    client_key = request.client.host if request.client else "anon"
+    if not ident and not anonymous_ask_allowed():
+        return error_response(401, "Sign in to ask TravelBuddy.", request_id, code="UNAUTHORIZED", headers={"WWW-Authenticate": "Bearer"})
+    client_key = ident.sub if ident else (request.client.host if request.client else "anon")
     wait = ask_limiter.check(client_key)
     if wait:
         return error_response(429, "Too many questions at once. Try again shortly.", request_id, retry_after=wait)
@@ -106,7 +116,7 @@ async def ask_stream(payload: AskRequest, request: Request):
         return {"conversation_id": payload.conversation_id}
 
     return StreamingResponse(
-        stream_runner.stream_request(request_id, events, on_final=on_final),
+        stream_runner.stream_request(request_id, events, owner=ident.sub if ident else None, on_final=on_final),
         media_type="text/event-stream",
         headers={**SSE_HEADERS, "X-Request-ID": request_id},
     )
