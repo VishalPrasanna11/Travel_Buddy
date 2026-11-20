@@ -1,19 +1,38 @@
-import { Route, Routes, Navigate } from "react-router-dom";
+import { lazy, Suspense, type ReactNode } from "react";
+import { Route, Routes, Navigate, useParams } from "react-router-dom";
+import { v4 as uuidv4 } from "uuid";
 import Layout from "./layouts/layout";
-import HomePage from "./pages/HomePage";
-import AuthCallbackPage from "./pages/AuthCallbackPage";
 import ProtectedRoute from "./auth/ProtectedRoute";
-import ChatPage from "./pages/ChatPage";
-import ChatMapsPage from "./pages/ChatMapsPage";
 import LandingPage from "./pages/LandingPage";
-import ChatMainPage from "./pages/ChatMainPage";
-import FlightSearchPage from "./pages/FlightSearchPage";
-import WaitlistPage from "./pages/WaitlistPage";
+import { RouteLoader } from "./components/system/FullPageLoader";
+
+// Everything except the landing page is split out, so first-time visitors
+// don't download chat, Shiki, maps or flight search up front.
+const HomePage = lazy(() => import("./pages/HomePage"));
+const AuthCallbackPage = lazy(() => import("./pages/AuthCallbackPage"));
+const ChatMainPage = lazy(() => import("./pages/ChatMainPage"));
+const ChatMapsPage = lazy(() => import("./pages/ChatMapsRoute"));
+const FlightSearchPage = lazy(() => import("./pages/FlightSearchPage"));
+const WaitlistPage = lazy(() => import("./pages/WaitlistPage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+
+const Page = ({ children, label }: { children: ReactNode; label?: string }) => (
+  <Suspense fallback={<RouteLoader label={label} />}>{children}</Suspense>
+);
+
+/** /chat with no id starts a fresh conversation. */
+const NewChatRedirect = () => <Navigate to={`/chat/${uuidv4()}`} replace />;
+
+/** Legacy /chatmain/:id links keep working. */
+const LegacyChatRedirect = () => {
+  const { id } = useParams();
+  return <Navigate to={id ? `/chat/${id}` : "/chat"} replace />;
+};
 
 const AppRouter = () => {
   return (
     <Routes>
-      {/* Public Route - Landing */}
+      {/* Public */}
       <Route
         path="/"
         element={
@@ -23,62 +42,86 @@ const AppRouter = () => {
         }
       />
 
-      {/* Public Route - Auth Callback */}
-      <Route path="/auth-callback" element={<AuthCallbackPage />} />
-
-      {/* Public Route - Waitlist */}
       <Route
-        path="/waitlist"
-        element={<WaitlistPage />}
+        path="/auth-callback"
+        element={
+          <Page>
+            <AuthCallbackPage />
+          </Page>
+        }
       />
 
-      {/* Protected Routes */}
+      <Route
+        path="/waitlist"
+        element={
+          <Layout showSidebar={false}>
+            <Page>
+              <WaitlistPage />
+            </Page>
+          </Layout>
+        }
+      />
+
+      {/* Signed in */}
       <Route element={<ProtectedRoute />}>
-        <Route 
+        <Route path="/chat" element={<NewChatRedirect />} />
+        <Route
           path="/chat/:id"
           element={
             <Layout variant="app" showSidebar>
-              <ChatMainPage />
+              <Page label="Opening your trip…">
+                <ChatMainPage />
+              </Page>
             </Layout>
-          } 
+          }
         />
-        
-        <Route 
-          path="/home" 
+        <Route path="/chatmain/:id" element={<LegacyChatRedirect />} />
+
+        <Route
+          path="/home"
           element={
-            <Layout showHero showFooter>
-              <HomePage />
+            <Layout showFooter>
+              <Page>
+                <HomePage />
+              </Page>
             </Layout>
-          } 
+          }
         />
-        
+
         <Route
           path="/chatmaps"
           element={
             <Layout variant="app" showSidebar>
-              <ChatMapsPage />
-            </Layout>
-          }
-        />
-        
-        <Route
-          path="/chatmain/:id"
-          element={
-            <Layout variant="app" showSidebar>
-             <ChatMainPage />
+              <Page>
+                <ChatMapsPage />
+              </Page>
             </Layout>
           }
         />
 
-        {/* Flight Search Route */}
         <Route
           path="/flights"
-          element={<FlightSearchPage />}
+          element={
+            <Layout showSidebar>
+              <Page label="Loading flight search…">
+                <FlightSearchPage />
+              </Page>
+            </Layout>
+          }
         />
       </Route>
 
-      {/* Catch-all redirect */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* Not found */}
+      <Route
+        path="*"
+        element={
+          <Layout showSidebar={false}>
+            <Page>
+              <NotFoundPage />
+            </Page>
+          </Layout>
+        }
+      />
     </Routes>
   );
 };

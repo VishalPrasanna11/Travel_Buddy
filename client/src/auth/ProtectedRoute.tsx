@@ -1,19 +1,29 @@
+import { useEffect, useRef } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { Navigate, Outlet } from "react-router-dom";
-import { toast } from "sonner"
+import { Outlet, useLocation } from "react-router-dom";
+import { FullPageLoader } from "@/components/system/FullPageLoader";
 
-const ProtectedRoute = () => { 
-    const { isAuthenticated,isLoading } = useAuth0();
+/**
+ * Signed-in routes. While Auth0 checks the session we show a calm loader.
+ * If there is no session (first visit, logged out, expired), we send the user
+ * to sign in and bring them back to the exact page they asked for.
+ */
+const ProtectedRoute = () => {
+    const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
+    const location = useLocation();
+    const redirecting = useRef(false);
 
-    if(isLoading) return null;
-    
-    if(isAuthenticated) return <Outlet />;
-    // Show toast notification before redirecting
-    toast.error("Please log in to access this page", {
-        position: "top-right",
-        duration: 3000
-    });
-    return <Navigate to="/" replace />;
-    }
+    useEffect(() => {
+        if (isLoading || isAuthenticated || redirecting.current) return;
+        redirecting.current = true;
+        void loginWithRedirect({
+            appState: { returnTo: location.pathname + location.search },
+        });
+    }, [isLoading, isAuthenticated, loginWithRedirect, location.pathname, location.search]);
+
+    if (isAuthenticated) return <Outlet />;
+
+    return <FullPageLoader label={isLoading ? "Checking your session…" : "Signing you in…"} />;
+};
 
 export default ProtectedRoute;
