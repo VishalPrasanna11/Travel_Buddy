@@ -1,6 +1,6 @@
 # DESIGN.md: TravelBuddy
 
-Status: **Phase 2 (foundations) complete.** Tokens live in `client/src/global.css` (`@theme`). Motion presets live in `client/src/lib/motion.ts`. Surface-level work (landing, chat states, itinerary rendering) comes in Phase 3. See §6 for what is still drifting.
+Status: **Final (Phases 1–6 complete), Nov 2026.** Tokens live in `client/src/global.css` (`@theme`). Motion presets live in `client/src/lib/motion.ts`. Report: `docs/ui-makeover/final-report.md`.
 
 ---
 
@@ -101,22 +101,42 @@ Answers use a reading width of `max-w-prose` (68ch).
 
 | Component | File | Variants / notes |
 |---|---|---|
-| Button | `ui/button.tsx` | `default` (Raspberry, one per view), `secondary` (Amber), `outline`, `ghost`, `destructive` (red-ink), `link`. Sizes `sm`/`default`/`lg`/`icon`. |
+| Button | `ui/button.tsx` | `default` (Raspberry, one per view), `secondary` (Amber), `outline`, `ghost`, `destructive` (red-ink), `link`. Sizes `sm`/`default`/`lg`/`icon`; 44px on touch. |
 | Badge / Chip | `ui/badge.tsx` | `default`, `secondary`, `outline`, `neutral`, `destructive`, plus category chips `flight`, `stay`, `success`, `estimate`, `subtle`. Text is always ink or white. |
 | Input | `ui/input.tsx` | 16px text on phones (no iOS zoom), `gray-strong` border, Raspberry focus. |
+| Tabs | `ui/tabs.tsx` | Segmented control; 40px, 48px on touch. |
 | Card | `ui/card.tsx` | Bordered `rounded-surface`, no shadow. Never nest cards. |
-| Notice | `ui/notice.tsx` | `info`, `error` (role=alert), `success`, `estimate`. Title + description + actions (Retry / Edit query / New trip). |
-| EmptyState | `ui/empty-state.tsx` | Icon in a Raspberry tint, title, description, actions; heading level is configurable. |
-| MessageRow | `ui/message-row.tsx` | `user`: right-aligned Soft Pink bubble. `assistant`: full reading width with the TravelBuddy mark, no bubble. Includes screen-reader speaker labels. |
-| App shell | `layouts/layout.tsx` | `variant="page"` (document scroll) or `"app"` (`h-dvh` workspace; panes scroll). Skip link, single `<main>`. Sidebar is a drawer on mobile; inert when collapsed on desktop. |
+| Dialog | `ui/dialog.tsx` | Radix: focus trap, Escape, ink/40 scrim. Opened from menus, it returns focus to the menu trigger. |
+| Notice | `ui/notice.tsx` | `info`, `error` (role=alert), `success`, `estimate`. Title + description + actions. |
+| EmptyState | `ui/empty-state.tsx` | Icon in a Raspberry tint, title, description, actions; configurable heading level (404 uses h1). |
+| Skeleton | `ui/skeleton.tsx` | `bg-muted` + slow `animate-breathe` (opacity only). |
+| MessageRow | `ui/message-row.tsx` | `user`: right-aligned Soft Pink bubble. `assistant`: full reading width with the TravelBuddy mark. Screen-reader speaker labels. |
+| AnswerMarkdown | `chat/answer-markdown.tsx` | react-markdown + GFM, **no raw HTML**, `<br/>` normalised. Headings start at h3. Tables scroll in their own region. External links are marked. |
+| CodeBlock | `chat/code-block.tsx` | Lazy. Shiki core + JS regex engine, 6 grammars, palette theme, horizontal scroll inside, copy button. |
+| ResultCards | `chat/result-cards.tsx` | FlightRow (Teal Blue), HotelRow (Amber), PlaceCard (4:3 photo, lazy, alt, fallback icon, rating + review count, address, "Open in Google Maps"). Only returned fields; first 4 places, then "Show all n". |
+| WeatherNote | `chat/weather-note.tsx` | Sunshine `estimate` Notice when the backend's simulated weather template is detected. |
+| AgentProgress | `chat/agent-progress.tsx` | Honest, time-based waiting state: stage text, elapsed time, what's being checked, indeterminate bar (motion-safe). Never marks a step done. |
+| Composer | `chat/composer.tsx` | Enter sends, Shift+Enter newline, IME-safe, no double submit, 44px send, autosize to 200px, hint text. |
+| ChatWelcome | `chat/chat-welcome.tsx` | First-visit empty state with 4 realistic example trips (no prices/ratings). |
+| TripHistory | `TripHistory.tsx` | Saved trips from IndexedDB (this device): active state, relative dates, rename/delete dialogs, live updates via `travelbuddy:conversations-changed`. |
+| Marketing | `marketing/ExamplePreview.tsx`, `marketing/HowItWorks.tsx` | "Example"-labelled answer preview with no invented values; uneven 3-step explainer. |
+| System | `system/FullPageLoader.tsx`, `system/ErrorBoundary.tsx`, `pages/NotFoundPage.tsx` | Auth loading, crash page (Reload / Go home), 404. |
+| App shell | `layouts/layout.tsx` | `variant="page"` (document scroll) or `"app"` (`h-dvh` workspace). Skip link is the first tab stop; single `<main>`. Sidebar: drawer below md, inert when collapsed. |
 
-Planned for Phase 3, built against real response fields: FlightSummary, HotelSummary, PlaceCard (photo), DaySection, AgentProgress.
+### Chat layout rules
+- Below **xl (1280px)** the chat takes the full height and the map is a "Show map" toggle (45dvh panel above the composer). From xl, chat is 55% and the map fills the rest.
+- The message list scrolls itself. It auto-follows only when the reader is within 120px of the bottom or sent the message; otherwise a "Jump to latest" pill appears.
+- Map pins are rebuilt from saved answers, so they survive reloads. Zoom fits the spread of the pins.
 
-## 7. Still drifting (tracked for later phases)
-- Landing and home content: pill badge above the headline, colored keyword in the headline, gradient washes, a side-tab border (`LandingPage.tsx:115`), a nested card, skipped heading levels, fake stats and testimonials. **Phase 3.**
-- `Hero.tsx` bounce scroll hint and pulse circles; Steps pulse glow. **Phase 3/4.**
-- The map "Detected Locations" panel uses side-tab borders. **Phase 3.**
-- `WeatherDisplay` structure (duplicate content, no estimate label). **Phase 3.**
-- Mixed `font-medium` vs `font-semibold` on headings in older pages. **Phase 3, as surfaces are rebuilt.**
-- Dark mode: none. The old `.dark` block with altered brand hexes was removed. `dark:` utilities are inert.
-- Bundle: entry JS 436 KB gzip (unchanged). Shiki still ships every grammar. **Phase 5.**
+## 7. Motion rules
+- Motion explains change: messages `animate-rise-in` (220ms, 6px), status blocks `animate-fade-in`, sidebar and drawer 280ms `ease-out-expo` in / 200ms `ease-in` out, dialogs fade + 0.98 scale.
+- Waiting indicators animate opacity only (`animate-breathe`) or the motion-safe indeterminate bar. No bounce, no endless decorative pulse.
+- Content is visible without JavaScript animation: no `opacity: 0` initial states gated on scroll or IntersectionObserver.
+- `prefers-reduced-motion: reduce` collapses all CSS animation and transition to 1ms, disables View Transitions animation, and switches smooth scrolling to instant. Framer Motion (only on `/chatmaps`) uses `MotionConfig reducedMotion="user"`.
+- Route changes cross-fade (200ms) through the View Transitions API (`@view-transition` plus `viewTransition` on router links and navigations). Browsers without support navigate normally.
+
+## 8. Known exceptions and drift
+- `/chatmaps` (legacy demo against a stub endpoint) still uses the old `ui/chat*` kit and Framer Motion. It's restyled through tokens, but not redesigned.
+- Assistant text is model-generated markdown: emoji bullets ("⭐ Rating", "💲 Price") and hotel prices inside the text come from the backend, not the UI.
+- Dark mode: none. `dark:` utilities are inert.
+- 25 pre-existing TypeScript errors remain in legacy files (library version drift in calendar/date-picker, `@ai-sdk/react` v4 API in ChatMapsPage, Maps loader options). The production build doesn't type-check (unchanged).
