@@ -72,6 +72,7 @@ function ChatArea({ id, mapToggle }: { id: string; mapToggle: React.ReactNode })
         onRetry={chat.retry}
         onEdit={chat.editFailed}
         onNewTrip={startNewTrip}
+        onStop={chat.stop}
       />
     </div>
   );

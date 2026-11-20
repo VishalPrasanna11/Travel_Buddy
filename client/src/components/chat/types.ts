@@ -3,21 +3,211 @@
  * next to the text answer, so result cards and map pins can be rebuilt
  * from saved conversations. Nothing here is invented: every field is
  * optional and rendered only when the API returned it.
+ *
+ * Entities follow the server schemas (server/schemas/entities.py): each has
+ * id, source, fetched_at and is_estimate. Older saved conversations used
+ * looser shapes; the *Of() readers below accept both.
  */
 
 export type LatLng = { lat: number; lng: number }
 
-export type Place = {
+export type Source = "routestack" | "google_places" | "openweather" | "simulated"
+
+type Entity = { id?: string; source?: Source; fetched_at?: string; is_estimate?: boolean }
+
+export type Price = {
+  amount: number
+  currency: string
+  basis?: "total" | "per_night" | "per_person" | "per_day" | "per_trip"
+  total?: number
+  per_traveler?: number
+  taxes_included?: boolean
+  published?: number
+  saving?: number
+  as_of?: string
+}
+
+export type Photo = {
+  ref?: string
+  url?: string
+  width?: number
+  height?: number
+  attributions?: { name?: string; uri?: string }[]
+}
+
+export type OpeningHours = { open_now?: boolean; weekday_descriptions?: string[] }
+
+export type Place = Entity & {
+  kind?: "attraction" | "restaurant" | "destination" | "other"
+  place_id?: string
   name: string
   address?: string
   rating?: number
   total_ratings?: number
+  /** Legacy single photo URL. */
   photo_url?: string
+  photos?: Photo[]
   location?: LatLng
   types?: string[]
+  primary_type?: string
+  price_level?: number
+  editorial_summary?: string
+  opening_hours?: OpeningHours
+  website?: string
+  google_maps_uri?: string
+  phone?: string
+  reviews?: { author?: string; rating?: number; text?: string; relative_time?: string }[]
 }
 
-export type Hotel = {
+export type FlightEndpoint = { airport?: string; airport_name?: string; terminal?: string; at?: string; utc_offset?: string }
+
+export type FlightSegment = {
+  carrier?: string
+  carrier_name?: string
+  flight_number?: string
+  departure: FlightEndpoint
+  arrival: FlightEndpoint
+  duration_minutes?: number
+  duration?: string
+  cabin_class?: string
+  layover_minutes?: number
+}
+
+export type Flight = Entity & {
+  carrier?: string
+  carrier_name?: string
+  origin?: string
+  destination?: string
+  departure_at?: string
+  arrival_at?: string
+  duration_minutes?: number
+  duration?: string
+  stops?: number
+  cabin_class?: string
+  segments?: FlightSegment[]
+  return_segments?: FlightSegment[]
+  price?: Price
+  baggage?: { checked?: string; cabin?: string }
+  refundable?: boolean
+  booking_url?: string
+}
+
+export type Hotel = Entity & {
+  name: string
+  address?: string
+  location?: LatLng
+  star_rating?: number
+  guest_rating?: number
+  review_count?: number
+  price?: Price
+  nightly_price?: Price
+  nights?: number
+  check_in?: string
+  check_out?: string
+  check_in_time?: string
+  check_out_time?: string
+  amenities?: string[]
+  amenity_names?: string[]
+  photos?: Photo[]
+  cancellation_policy?: string
+  refundable?: boolean
+  provider?: string
+  booking_url?: string
+}
+
+export type CarRental = Entity & {
+  vendor?: string
+  name: string
+  category?: string
+  transmission?: string
+  seats?: number
+  bags?: number
+  air_conditioning?: boolean
+  image_url?: string
+  pickup_location?: string
+  dropoff_location?: string
+  pickup_at?: string
+  dropoff_at?: string
+  price?: Price
+  booking_url?: string
+}
+
+export type WeatherDay = Entity & {
+  date: string
+  temp_min?: number
+  temp_max?: number
+  units?: "metric" | "imperial"
+  condition_id?: number
+  condition?: string
+  icon?: string
+  pop?: number
+  uvi?: number
+  sunrise?: string
+  sunset?: string
+  kind?: "forecast" | "day_summary" | "simulated"
+}
+
+export type WeatherForecast = Entity & {
+  location: string
+  units?: "metric" | "imperial"
+  is_simulated?: boolean
+  reason?: string
+  timezone?: string
+  days?: WeatherDay[]
+  alerts?: { event: string; sender?: string; start?: string; end?: string; description?: string }[]
+  report?: string
+}
+
+/** Legacy: { [location]: { report } } */
+export type WeatherReport = { report?: string; is_simulated?: boolean; forecast?: WeatherForecast }
+
+export type SectionKey = "flights" | "hotels" | "attractions" | "restaurants" | "weather" | "cars"
+
+export type SectionStatus = {
+  status: "ok" | "empty" | "failed" | "skipped" | "estimate"
+  count?: number
+  message?: string
+  reason?: string
+  alternatives?: string[]
+  code?: string
+}
+
+export type TripDestination = {
+  name: string
+  place_id?: string
+  lat?: number
+  lng?: number
+  timezone?: string
+  viewport?: { low: LatLng; high: LatLng }
+}
+
+export type Trip = {
+  intent?: string
+  destination?: string | TripDestination
+  origin?: string
+  start_date?: string
+  end_date?: string
+  adults?: number
+  children?: number
+  sections?: string[]
+}
+
+export type ResponseData = {
+  status?: string
+  location?: string
+  trip?: Trip
+  sections?: Partial<Record<SectionKey, SectionStatus>>
+  restaurants?: Place[]
+  attractions?: Place[] | { attractions_list?: { attractions?: Place[] } }
+  attractions_list?: { attractions?: Place[] }
+  hotels?: Hotel[] | { data?: LegacyHotel[] }
+  flights?: Flight[] | { data?: LegacyFlight[] }
+  cars?: CarRental[]
+  weather?: WeatherForecast | Record<string, WeatherReport>
+}
+
+// ------------------------------------------------------- legacy shapes
+type LegacyHotel = {
   name: string
   hotelId?: string
   rating?: number | string
@@ -25,32 +215,24 @@ export type Hotel = {
   address?: { countryCode?: string; cityName?: string; lines?: string[] }
 }
 
-export type Flight = {
+type LegacyFlight = {
   id?: string
   carrier?: string
   carrierName?: string
   flightNumber?: string
-  departure?: { iataCode?: string; terminal?: string; at?: string }
-  arrival?: { iataCode?: string; terminal?: string; at?: string }
+  departure?: { iataCode?: string; at?: string }
+  arrival?: { iataCode?: string; at?: string }
   duration?: string
-  price?: { currency?: string; total?: string; perAdult?: string }
+  price?: { currency?: string; total?: string }
   cabinClass?: string
 }
 
-export type WeatherReport = { report?: string }
+// --------------------------------------------------------------- agents
+export type AgentKey = "intake" | SectionKey | "compose"
+export type AgentState = "queued" | "running" | "done" | "empty" | "failed" | "skipped"
+export type AgentProgressMap = Partial<Record<AgentKey, { state: AgentState; count?: number; message?: string }>>
 
-export type ResponseData = {
-  status?: string
-  location?: string
-  restaurants?: Place[]
-  attractions?: Place[] | { attractions_list?: { attractions?: Place[] } }
-  attractions_list?: { attractions?: Place[] }
-  hotels?: { data?: Hotel[] }
-  flights?: { data?: Flight[]; meta?: { origin?: string; destination?: string; departureDate?: string } }
-  weather?: Record<string, WeatherReport>
-}
-
-export type ChatErrorKind = "timeout" | "network" | "server" | "incomplete"
+export type ChatErrorKind = "timeout" | "network" | "server" | "incomplete" | "rate_limited" | "cancelled"
 
 export type ChatMessage = {
   id: string
@@ -59,16 +241,91 @@ export type ChatMessage = {
   createdAt?: Date | string
   /** Assistant only: structured API fields returned with this answer. */
   data?: ResponseData
-  /** Assistant only: this turn failed. `content` is empty. */
-  status?: "error"
-  error?: { kind: ChatErrorKind; message: string }
+  /** Assistant only: error = this turn failed; streaming = still arriving. */
+  status?: "error" | "streaming"
+  error?: { kind: ChatErrorKind; message: string; code?: string; requestId?: string; retryAfter?: number }
   /** Error turns point at the user message they belong to. */
   replyTo?: string
+  /** Streaming progress, per agent. */
+  progress?: AgentProgressMap
+  requestId?: string
 }
 
+// -------------------------------------------------------------- readers
 export function attractionsOf(data?: ResponseData): Place[] {
   if (!data) return []
   const a = data.attractions
   if (Array.isArray(a)) return a
   return a?.attractions_list?.attractions ?? data.attractions_list?.attractions ?? []
+}
+
+export function restaurantsOf(data?: ResponseData): Place[] {
+  return Array.isArray(data?.restaurants) ? data!.restaurants : []
+}
+
+export function hotelsOf(data?: ResponseData): Hotel[] {
+  const h = data?.hotels
+  if (!h) return []
+  if (Array.isArray(h)) return h
+  return (h.data ?? []).map((l) => ({
+    id: l.hotelId,
+    name: l.name,
+    star_rating: typeof l.rating === "string" ? Number.parseFloat(l.rating) || undefined : l.rating,
+    address: [l.address?.cityName, l.address?.countryCode].filter(Boolean).join(", ") || undefined,
+    location: l.geoCode ? { lat: l.geoCode.latitude, lng: l.geoCode.longitude } : undefined,
+  }))
+}
+
+export function flightsOf(data?: ResponseData): Flight[] {
+  const f = data?.flights
+  if (!f) return []
+  if (Array.isArray(f)) return f
+  return (f.data ?? []).map((l) => {
+    const amount = l.price?.total ? Number.parseFloat(l.price.total) : NaN
+    const seg: FlightSegment = {
+      carrier: l.carrier,
+      carrier_name: l.carrierName,
+      flight_number: l.flightNumber,
+      departure: { airport: l.departure?.iataCode, at: l.departure?.at },
+      arrival: { airport: l.arrival?.iataCode, at: l.arrival?.at },
+      duration: l.duration,
+    }
+    return {
+      id: l.id,
+      carrier: l.carrier,
+      carrier_name: l.carrierName,
+      origin: l.departure?.iataCode,
+      destination: l.arrival?.iataCode,
+      departure_at: l.departure?.at,
+      arrival_at: l.arrival?.at,
+      duration: l.duration,
+      cabin_class: l.cabinClass,
+      stops: 0,
+      segments: [seg],
+      price: Number.isNaN(amount) ? undefined : { amount, currency: l.price?.currency || "USD" },
+    }
+  })
+}
+
+/** Typed forecast, or a legacy report flagged as simulated when it matches the old template. */
+export function weatherOf(data?: ResponseData): WeatherForecast | null {
+  const w = data?.weather
+  if (!w) return null
+  if ("location" in w && typeof (w as WeatherForecast).location === "string") return w as WeatherForecast
+  const first = Object.entries(w as Record<string, WeatherReport>)[0]
+  if (!first) return null
+  const [location, report] = first
+  if (report?.forecast) return report.forecast
+  const simulated = report?.is_simulated ?? /currently 22°C \(72°F\) with clear skies/i.test(report?.report ?? "")
+  return { location, report: report?.report, is_simulated: simulated, days: [] }
+}
+
+export function carsOf(data?: ResponseData): CarRental[] {
+  return Array.isArray(data?.cars) ? data!.cars : []
+}
+
+export function destinationOf(data?: ResponseData): TripDestination | null {
+  const d = data?.trip?.destination
+  if (!d) return null
+  return typeof d === "string" ? { name: d } : d
 }

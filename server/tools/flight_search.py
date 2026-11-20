@@ -3,19 +3,82 @@ from typing import Dict, Any
 import logging
 import httpx
 from tools.routestack_auth import headers, BASE_URL
+from schemas.entities import Flight, FlightEndpoint, FlightSegment, Price, make_id, now_iso
 
 logger = logging.getLogger("flight_search")
 
 
+_LOCATION_CACHE: Dict[str, list] = {}
+
+
 def _lookup_location(term: str) -> list:
-    resp = httpx.post(
-        f"{BASE_URL}/mcp/flight/locations",
-        headers=headers(),
-        json={"term": term},
-        timeout=15,
+    """Airport/city lookup. Tries the full term, then just the city part
+    ("Boston, MA, USA" -> "Boston"), since the provider matches short names."""
+    candidates = [term.strip()]
+    head = term.split(",")[0].strip()
+    if head and head not in candidates:
+        candidates.append(head)
+    for cand in candidates:
+        key = cand.lower()
+        if key in _LOCATION_CACHE:
+            return _LOCATION_CACHE[key]
+        resp = httpx.post(
+            f"{BASE_URL}/mcp/flight/locations",
+            headers=headers(),
+            json={"term": cand},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        result = resp.json().get("result") or []
+        if result:
+            _LOCATION_CACHE[key] = result
+            return result
+    return []
+
+
+def _minutes(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _segment(s: Dict[str, Any], cabin_class: str) -> FlightSegment:
+    mins = _minutes(s.get("triptime"))
+    return FlightSegment(
+        carrier=s.get("flightCode", "") or s.get("airline", ""),
+        carrier_name=s.get("airline") or None,
+        flight_number=f"{s.get('flightCode', '')}{s.get('flightNumber', '')}",
+        departure=FlightEndpoint(airport=s.get("departure", ""), airport_name=s.get("departairport") or None, at=s.get("departureTime") or None),
+        arrival=FlightEndpoint(airport=s.get("arrival", ""), airport_name=s.get("arrivalairport") or None, at=s.get("arrivalTime") or None),
+        duration_minutes=mins or None,
+        duration=f"PT{mins // 60}H{mins % 60}M" if mins else None,
+        cabin_class=s.get("cabin") or cabin_class,
     )
-    resp.raise_for_status()
-    return resp.json().get("result", [])
+
+
+def normalize_flight(itin: Dict[str, Any], cabin_class: str, adults: int, fetched_at: str) -> Flight:
+    segs = [_segment(s, cabin_class) for s in (itin.get("flights") or []) if s]
+    currency = itin.get("currency") or "USD"
+    total = itin.get("ourprice") or itin.get("totalFare") or itin.get("baseFare")
+    price = Price.maybe(total, currency, basis="total", as_of=fetched_at)
+    first, last = (segs[0], segs[-1]) if segs else (None, None)
+    return Flight(
+        id=make_id("fl", itin.get("fareSourceCode"), *[s.flight_number for s in segs]),
+        fetched_at=fetched_at,
+        carrier=first.carrier if first else "",
+        carrier_name=first.carrier_name if first else None,
+        origin=first.departure.airport if first else "",
+        destination=last.arrival.airport if last else "",
+        departure_at=first.departure.at if first else None,
+        arrival_at=last.arrival.at if last else None,
+        duration_minutes=sum(s.duration_minutes or 0 for s in segs) or None,
+        stops=int(itin.get("stops", max(len(segs) - 1, 0)) or 0),
+        cabin_class=cabin_class,
+        segments=segs,
+        price=price,
+        fare_source_code=itin.get("fareSourceCode") or None,
+    )
 
 
 def _search_flights(params: Dict[str, str]) -> Dict[str, Any]:
@@ -63,35 +126,13 @@ def _search_flights(params: Dict[str, str]) -> Dict[str, Any]:
         raw_itineraries = data.get("result") or data.get("results") or []
         if raw_itineraries is None:
             raw_itineraries = []
-        flights = []
-        for itin in raw_itineraries[:10]:
-            if itin is None:
-                continue
-            segments = itin.get("flights") or []
-            seg_list = []
-            for s in segments:
-                seg_list.append({
-                    "airline": s.get("airline", ""),
-                    "flight_number": f"{s.get('flightCode', '')}{s.get('flightNumber', '')}",
-                    "origin": s.get("departure", ""),
-                    "destination": s.get("arrival", ""),
-                    "departure_time": s.get("departureTime", ""),
-                    "arrival_time": s.get("arrivalTime", ""),
-                    "duration": f"{s.get('triptime', 0) // 60}h {s.get('triptime', 0) % 60}m",
-                    "cabin_class": s.get("cabin", cabin_class),
-                    "departure_airport": s.get("departairport", ""),
-                    "arrival_airport": s.get("arrivalairport", ""),
-                })
-
-            price_val = itin.get("ourprice") or itin.get("totalFare") or itin.get("baseFare", "N/A")
-            price_str = f"USD {price_val}"
-
-            flights.append({
-                "price": price_str,
-                "segments": seg_list,
-                "stops": itin.get("stops", max(len(seg_list) - 1, 0)),
-                "fareSourceCode": itin.get("fareSourceCode", ""),
-            })
+        fetched_at = now_iso()
+        flights = [
+            normalize_flight(itin, cabin_class, adults, fetched_at)
+            for itin in raw_itineraries[:10]
+            if itin is not None
+        ]
+        flights = [f.model_dump(mode="json", exclude_none=True) for f in flights]
 
         if not flights:
             return {

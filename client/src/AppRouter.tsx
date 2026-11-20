@@ -62,6 +62,21 @@ const AppRouter = () => {
         }
       />
 
+      {/* Dev only (tree-shaken from production builds): the chat without the
+          Auth0 gate, for running against a local fixture server. */}
+      {import.meta.env.DEV && (
+        <Route
+          path="/dev/chat/:id"
+          element={
+            <Layout variant="app" showSidebar>
+              <Page label="Opening your trip…">
+                <ChatMainPage />
+              </Page>
+            </Layout>
+          }
+        />
+      )}
+
       {/* Signed in */}
       <Route element={<ProtectedRoute />}>
         <Route path="/chat" element={<NewChatRedirect />} />

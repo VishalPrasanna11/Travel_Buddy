@@ -26,6 +26,7 @@ type ChatComponentProps = {
   onRetry: (errorId: string) => void;
   onEdit: (errorId: string) => void;
   onNewTrip: () => void;
+  onStop?: () => void;
 };
 
 const NEAR_BOTTOM_PX = 120;
@@ -47,6 +48,14 @@ const ERROR_COPY: Record<NonNullable<ChatMessage['error']>['kind'], { title: str
     title: 'The answer stopped before it finished',
     body: 'The server closed the connection mid-answer. Try again; nothing was lost.',
   },
+  rate_limited: {
+    title: 'Too many questions at once',
+    body: 'Give it a moment, then try again.',
+  },
+  cancelled: {
+    title: 'Stopped',
+    body: 'You stopped this answer. Anything that had already arrived is kept above.',
+  },
 };
 
 function ErrorTurn({ message, onRetry, onEdit, onNewTrip, disabled }: { message: ChatMessage; onRetry: () => void; onEdit: () => void; onNewTrip: () => void; disabled: boolean }) {
@@ -56,7 +65,14 @@ function ErrorTurn({ message, onRetry, onEdit, onNewTrip, disabled }: { message:
       tone="error"
       className="max-w-prose"
       title={copy.title}
-      description={<p>{copy.body}{message.error?.message && message.error.kind === 'server' ? <span className="mt-1 block text-meta text-muted-foreground">Details: {message.error.message}</span> : null}</p>}
+      description={
+        <p>
+          {copy.body}
+          {message.error?.retryAfter ? ` You can ask again in about ${message.error.retryAfter} seconds.` : null}
+          {message.error?.message && message.error.kind === 'server' ? <span className="mt-1 block text-meta text-muted-foreground">Details: {message.error.message}</span> : null}
+          {message.error?.requestId ? <span className="mt-1 block text-meta text-muted-foreground">Reference: <span className="font-mono">{message.error.requestId}</span></span> : null}
+        </p>
+      }
       actions={
         <>
           <Button size="sm" onClick={onRetry} disabled={disabled}><RotateCcw aria-hidden="true" />Try again</Button>
@@ -70,7 +86,7 @@ function ErrorTurn({ message, onRetry, onEdit, onNewTrip, disabled }: { message:
 
 export default function ChatComponent({
   messages, input, pending, pendingSince, ready,
-  onInputChange, onSend, onPick, onRetry, onEdit, onNewTrip,
+  onInputChange, onSend, onPick, onRetry, onEdit, onNewTrip, onStop,
 }: ChatComponentProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
@@ -168,6 +184,13 @@ export default function ChatComponent({
                         onNewTrip={onNewTrip}
                       />
                     </MessageRow>
+                  ) : m.status === 'streaming' ? (
+                    <MessageRow role="assistant" aria-busy="true">
+                      <AgentProgress since={pendingSince ?? Date.now()} progress={m.progress} hasText={!!m.content} onStop={onStop} />
+                      {m.content && <AnswerMarkdown>{m.content}</AnswerMarkdown>}
+                      <WeatherNote data={m.data} answer={m.content} />
+                      <ResultCards data={m.data} />
+                    </MessageRow>
                   ) : (
                     <MessageRow
                       role="assistant"
@@ -180,7 +203,7 @@ export default function ChatComponent({
                   )}
                 </li>
               ))}
-              {pending && pendingSince && (
+              {pending && pendingSince && !messages.some((m) => m.status === 'streaming') && (
                 <li>
                   <MessageRow role="assistant">
                     <AgentProgress since={pendingSince} />

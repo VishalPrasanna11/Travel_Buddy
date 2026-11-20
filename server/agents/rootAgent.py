@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, TypedDict
+from typing import Dict, Any, List, TypedDict, AsyncIterator, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, END
@@ -13,6 +13,7 @@ from subagents.pre_travel.agent import PreTripAgent
 from subagents.planning.agent import PlanningAgent
 from tools.memory import _load_precreated_itinerary
 from tools.weather_tool import weather_tool
+from agents.travel_graph import travel_graph, initial_state, final_payload, merge_dicts
 
 logger = logging.getLogger("root_agent")
 
@@ -322,6 +323,43 @@ class Agent:
                 response["api_data"][key] = response[key]
 
         return response
+
+
+    async def astream(
+        self,
+        inputs: Dict[str, Any],
+        request_id: str,
+        prefs: Optional[Dict[str, Any]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream the travel pipeline node by node.
+
+        Yields dicts with an `event` key: agent | plan | section | delta | final.
+        Each sub-agent node reports as soon as it finishes instead of the whole
+        graph resolving at once (the old ainvoke()).
+        """
+        state = initial_state(request_id, inputs.get("input", ""), inputs.get("history") or [], prefs)
+        acc: Dict[str, Any] = dict(state)
+        streamed_text = False
+        async for mode, chunk in travel_graph.astream(state, stream_mode=["updates", "custom", "messages"]):
+            if mode == "custom":
+                if chunk.get("event") == "delta":
+                    streamed_text = True
+                yield chunk
+            elif mode == "messages":
+                msg, meta = chunk
+                if meta.get("langgraph_node") == "compose" and getattr(msg, "content", None):
+                    streamed_text = True
+                    yield {"event": "delta", "text": msg.content}
+            elif mode == "updates":
+                for _node, update in (chunk or {}).items():
+                    if not update:
+                        continue
+                    for key, value in update.items():
+                        acc[key] = merge_dicts(acc.get(key), value) if key == "sections" else value
+        payload = final_payload(acc)
+        if not streamed_text and payload.get("answer"):
+            yield {"event": "delta", "text": payload["answer"]}
+        yield {"event": "final", **payload}
 
 
 def _extract_embedded_data(text: str, response: dict) -> None:

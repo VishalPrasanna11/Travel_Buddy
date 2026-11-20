@@ -13,6 +13,7 @@ from routes.llm_chat_historyRoute import router as llm_chat_history_router
 from routes.geocodeRoute import router as geocode_router
 from routes.chatRoute import router as chat_router
 from routes.flightRoute import router as flight_router
+from middlewares.errors import RequestIdMiddleware, install_error_handlers
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +46,7 @@ app = FastAPI(
 origins = [
     "http://localhost:3000",
     "http://localhost:8000",
+    "http://localhost:5173",
     os.getenv("FRONTEND_URL", ""),
     "https://travelbuddyai-5b869d0b00e5.herokuapp.com",
 ]
@@ -52,10 +54,15 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "Retry-After", "X-Schema-Version"],
 )
+
+app.add_middleware(RequestIdMiddleware)
+install_error_handlers(app)
 
 app.include_router(user_router, prefix="/api/users", tags=["users"])
 app.include_router(llm_router, prefix="/api/llm", tags=["llm"])
