@@ -1,517 +1,265 @@
-// src/pages/HomePage.tsx
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bot, ChevronRight, Compass, Star, Sparkles, PlaneTakeoff, Hotel, Utensils, Camera, TrendingUp, Clock } from 'lucide-react';
 import { useAuth0 } from "@auth0/auth0-react";
+import { v4 as uuidv4 } from "uuid";
+import { ArrowRight, ExternalLink, ImageOff } from "lucide-react";
 import { useCreateMyUser } from "@/api/UserApi";
-// Import shadcn components
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
 
-import { useEffect, useRef } from "react";
+import kyotoImg from "@/assets/kyoto.jpeg";
+import barcelonaImg from "@/assets/barcelona.jpeg";
+import newZealandImg from "@/assets/new-zealand.jpeg";
+import marrakechImg from "@/assets/marrakech.jpeg";
+import culturalImg from "@/assets/cultural.jpeg";
+import adventureImg from "@/assets/adventure.jpeg";
+import culinaryImg from "@/assets/culinary.jpeg";
+import luxuryImg from "@/assets/luxury.jpeg";
 
-import kyotoImg from '../assets/kyoto.jpeg';
-import barcelonaImage from '/src/assets/barcelona.jpeg';
-import newZealandImage from '/src/assets/new-zealand.jpeg';
-import marrakechImage from '/src/assets/marrakech.jpeg';
-import testimonial2Image from '/src/assets/testimonial-2.jpeg';
-import culturalImage from '/src/assets/cultural.jpeg';
-import adventureImage from '/src/assets/adventure.jpeg';
-import culinaryImage from '/src/assets/culinary.jpeg';
-import luxuryImage from '/src/assets/luxury.jpeg';
+/**
+ * Contract with the chat page: we navigate to /chat/:id with
+ * `location.state = { prompt: string }`. The chat page sends that prompt
+ * as the first message, once.
+ */
+export type ChatLaunchState = { prompt: string };
 
-// AI-recommended destinations
-const aiRecommendedDestinations = [
-  {
-    name: "Kyoto",
-    country: "Japan",
-    description: "Traditional temples, serene gardens, and authentic cultural experiences",
-    matchScore: 98,
-    tags: ["Cultural", "Historical", "Peaceful"],
-    imageUrl: kyotoImg,
-    externalLink: "https://kyoto.travel/en/"
-  },
-  {
-    name: "Barcelona",
-    country: "Spain",
-    description: "Vibrant architecture, Mediterranean beaches, and lively atmosphere",
-    matchScore: 95,
-    tags: ["Architecture", "Beach", "Nightlife"],
-    imageUrl: barcelonaImage,
-    externalLink: "https://www.ricksteves.com/europe/spain/barcelona"
-  },
-  {
-    name: "New Zealand",
-    country: "Oceania",
-    description: "Breathtaking landscapes, outdoor adventures, and friendly locals",
-    matchScore: 94,
-    tags: ["Nature", "Adventure", "Scenic"],
-    imageUrl: newZealandImage,
-    externalLink: "https://www.petrinadarrah.com/new-zealand-travel-guide"
-  },
-  {
-    name: "Marrakech",
-    country: "Morocco",
-    description: "Exotic markets, rich history, and sensory experiences",
-    matchScore: 92,
-    tags: ["Cultural", "Markets", "Historical"],
-    imageUrl: marrakechImage,
-    externalLink: "https://www.stokedtotravel.com/3-days-in-marrakech/"
-  },
+const exampleTrips = [
+  "4 days in Lisbon in May from Boston, two adults, mid-range, food and old neighborhoods",
+  "A week in Japan in April from San Francisco: Tokyo then Kyoto, temples and food markets",
+  "Family weekend in Chicago from Detroit in July with two kids, museums and the lakefront",
+  "5 days in Mexico City in October from Austin, budget-friendly, street food and art",
 ];
 
-// AI travel insights
-const aiTravelInsights = [
-  {
-    title: "Best time to visit Thailand",
-    description: "Our AI analyzed weather patterns, tourist data, and local events to determine November-February offers optimal conditions.",
-    category: "Seasonal Insights",
-    url: "https://www.enchantingtravels.com/destinations/asia/thailand/best-time-to-visit-thailand/"
-  },
-  {
-    title: "Hidden gems in Portugal",
-    description: "Based on local recommendations and off-the-beaten-path locations with high satisfaction ratings.",
-    category: "Destination Discovery",
-    url: "https://www.europeanbestdestinations.com/destinations/portugal/best-hidden-gems-in-portugal/"
-  },
-  {
-    title: "Budget-friendly European cities",
-    description: "Analysis of accommodation, food, and attraction costs across 50+ European destinations.",
-    category: "Budget Travel",
-    url: "https://travelbinger.com/europe-budget/"
-  }
+const destinations = [
+  { name: "Kyoto", country: "Japan", blurb: "Temples, gardens and quiet lanes", image: kyotoImg, guide: "https://kyoto.travel/en/", guideSource: "kyoto.travel" },
+  { name: "Barcelona", country: "Spain", blurb: "Gaudí, beaches and late dinners", image: barcelonaImg, guide: "https://www.ricksteves.com/europe/spain/barcelona", guideSource: "ricksteves.com" },
+  { name: "New Zealand", country: "Oceania", blurb: "Big landscapes and long drives", image: newZealandImg, guide: "https://www.petrinadarrah.com/new-zealand-travel-guide", guideSource: "petrinadarrah.com" },
+  { name: "Marrakech", country: "Morocco", blurb: "Souks, riads and the Atlas nearby", image: marrakechImg, guide: "https://www.stokedtotravel.com/3-days-in-marrakech/", guideSource: "stokedtotravel.com" },
 ];
 
-// User testimonials
-const testimonials = [
-  {
-    name: "Vishal Prasanna",
-    location: "New York",
-    comment: "The AI recommended a perfect itinerary for Japan that matched my interests in food and culture perfectly!",
-    rating: 5,
-    imageUrl: "/assets/testimonials/testimonial-1.jpg"
-  },
-  {
-    name: "Priya Shetty",
-    location: "Seattle",
-    comment: "Saved me hours of research and created a family-friendly New Zealand trip that everyone loved.",
-    rating: 4,
-    imageUrl: testimonial2Image
-  },
-  {
-    name: "Srunith",
-    location: "London",
-    comment: "I was skeptical about AI travel planning, but it found hidden gems in Italy I would have never discovered on my own.",
-    rating: 5,
-    imageUrl: "/assets/testimonials/testimonial-3.jpg"
-  }
+const travelStyles = [
+  { name: "Cultural", image: culturalImg, link: "https://www.worldpackers.com/articles/cultural-travel", source: "worldpackers.com" },
+  { name: "Adventure", image: adventureImg, link: "https://www.exploreworldwide.com/", source: "exploreworldwide.com" },
+  { name: "Culinary", image: culinaryImg, link: "https://travelsquire.com/bringing-culinary-travel-inspiration-home/", source: "travelsquire.com" },
+  { name: "Luxury", image: luxuryImg, link: "https://www.jacadatravel.com/experience-type/", source: "jacadatravel.com" },
 ];
 
-// Travel categories with images
-const travelCategories = [
-  {
-    name: "Cultural",
-    description: "Immersive local experiences",
-    icon: <Camera className="h-5 w-5" />,
-    color: "raspberry",
-    imageUrl: culturalImage,
-    externalLink: "https://www.worldpackers.com/articles/cultural-travel#:~:text=Cultural%20travel%2C%20also%20called%20immersive,food%2C%20and%20ways%20of%20life."
-  },
-  {
-    name: "Adventure",
-    description: "Thrilling outdoor activities",
-    icon: <Compass className="h-5 w-5" />,
-    color: "amber",
-    imageUrl: adventureImage,
-    externalLink: "https://www.exploreworldwide.com/"
-  },
-  {
-    name: "Culinary",
-    description: "Food and drink experiences",
-    icon: <Utensils className="h-5 w-5" />,
-    color: "leaf-green",
-    imageUrl: culinaryImage,
-    externalLink: "https://travelsquire.com/bringing-culinary-travel-inspiration-home/"
-  },
-  {
-    name: "Luxury",
-    description: "Premium travel experiences",
-    icon: <Hotel className="h-5 w-5" />,
-    color: "teal-blue",
-    imageUrl: luxuryImage,
-    externalLink: "https://www.jacadatravel.com/experience-type/?gad_source=1&gbraid=0AAAAAD5VyX8JaD2_qq1aBFW_h9Zgyb6yq&gclid=CjwKCAjw8IfABhBXEiwAxRHlsLSdPjIa1hC68-tt99GzYPluzM1A-5MK-Hs06eSlgIihpo4d53SV3BoC7vgQAvD_BwE#intro"
-  }
+const readingList = [
+  { title: "Best time to visit Thailand", source: "enchantingtravels.com", url: "https://www.enchantingtravels.com/destinations/asia/thailand/best-time-to-visit-thailand/" },
+  { title: "Hidden gems in Portugal", source: "europeanbestdestinations.com", url: "https://www.europeanbestdestinations.com/destinations/portugal/best-hidden-gems-in-portugal/" },
+  { title: "Budget-friendly European cities", source: "travelbinger.com", url: "https://travelbinger.com/europe-budget/" },
 ];
+
+/** Image with a fixed aspect ratio and a calm fallback if it fails to load. */
+function IdeaImage({ src, alt, ratio }: { src: string; alt: string; ratio: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className={`${ratio} w-full overflow-hidden rounded-lg bg-muted`}>
+      {failed ? (
+        <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+          <ImageOff className="size-6" aria-hidden="true" />
+          <span className="sr-only">Image unavailable</span>
+        </div>
+      ) : (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.02]"
+        />
+      )}
+    </div>
+  );
+}
+
+function ExternalSource({ href, children, source }: { href: string; children: React.ReactNode; source: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground"
+    >
+      {children}
+      <ExternalLink className="size-3.5" aria-hidden="true" />
+      <span className="sr-only">(opens {source} in a new tab)</span>
+    </a>
+  );
+}
 
 const HomePage = () => {
-  // Auth0 user authentication
-  //Don't remove this
   const { user } = useAuth0();
   const { createUser } = useCreateMyUser();
-  const naviagte = useNavigate();
+  const navigate = useNavigate();
   const hasCreatedUser = useRef(false);
+  const [prompt, setPrompt] = useState("");
+
+  // Make sure the signed-in user exists in our database (once per visit).
   useEffect(() => {
     if (user?.sub && user.email && !hasCreatedUser.current) {
-      createUser({ auth0id: user.sub, email: user.email });
       hasCreatedUser.current = true;
+      createUser({ auth0id: user.sub, email: user.email }).catch((err) =>
+        console.error("Could not register user:", err)
+      );
     }
-    naviagte("/home");
-  }, [createUser, naviagte, user]);
+  }, [createUser, user]);
 
-  //Don't remove above
-  const navigate = useNavigate();
-  const [aiPrompt, setAiPrompt] = useState("");
-
-  const handleAiPromptSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (aiPrompt) {
-      navigate(`/ai-planner?prompt=${encodeURIComponent(aiPrompt)}`);
-    }
+  const startTrip = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const state: ChatLaunchState = { prompt: trimmed };
+    navigate(`/chat/${uuidv4()}`, { state });
   };
 
-  // Function to handle the "Let's Start the journey?" button click
-  const handleStartJourney = () => {
-    // Generate a unique ID using timestamp and random string
-    const randomId = Date.now().toString(36) + Math.random().toString(36).substring(2);
-    
-    // Navigate to the chat route with this random ID
-    navigate(`/chat/${randomId}`);
-  };
+  const firstName = user?.given_name || (user?.name && !user.name.includes("@") ? user.name.split(" ")[0] : "");
 
   return (
-    <div className="flex flex-col gap-16 px-4 md:px-6 py-8 max-w-7xl mx-auto">
-      {/* Hero Section with AI Search */}
-      <div className="relative">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-raspberry/5 to-transparent rounded-3xl" />
-        <div className="py-12 md:py-20 text-center space-y-8">
-          
-          <div className="space-y-4 max-w-3xl mx-auto">
-            <h1 className="text-4xl md:text-6xl font-medium tracking-tight">
-              Your AI travel companion for <span className="text-raspberry">perfect</span> journeys
-            </h1>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Discover personalized travel experiences tailored to your preferences with our advanced AI
-            </p>
-          </div>
+    <div className="mx-auto w-full max-w-6xl px-gutter md:px-gutter-lg">
+      {/* Launcher */}
+      <section aria-labelledby="home-heading" className="py-section">
+        <div className="mx-auto max-w-2xl">
+          <h1 id="home-heading" className="text-display font-semibold">
+            {firstName ? `Where to next, ${firstName}?` : "Where to next?"}
+          </h1>
+          <p className="mt-3 text-lg text-muted-foreground">
+            Describe the trip in a sentence or two. TravelBuddy will put together flights, hotels, things to do and
+            the weather.
+          </p>
 
-          <Card className="max-w-6xl mx-auto border shadow-md">
-            <CardContent className="p-4">
-              <Tabs defaultValue="ai" className="w-full">
-                <TabsList className="grid grid-cols-1 mb-9">
-                  <TabsTrigger value="ai">
-                    <Bot className="mr-2 h-4 w-4" />
-                    AI Planner
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="ai" className="space-y-4">
-                  <form onSubmit={handleAiPromptSubmit} className="space-y-4">
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      <Badge variant="outline" className="cursor-pointer hover:bg-muted" onClick={() => setAiPrompt("I want a relaxing beach vacation with luxury accommodations")}>
-                        Luxury Beach
-                      </Badge>
-                      <Badge variant="outline" className="cursor-pointer hover:bg-muted" onClick={() => setAiPrompt("Family-friendly European city tour with activities for kids")}>
-                        Family Europe
-                      </Badge>
-                      <Badge variant="outline" className="cursor-pointer hover:bg-muted" onClick={() => setAiPrompt("Adventure trip with hiking and outdoor activities")}>
-                        Adventure
-                      </Badge>
-                      <Badge variant="outline" className="cursor-pointer hover:bg-muted" onClick={() => setAiPrompt("Cultural immersion in Southeast Asia on a budget")}>
-                        Cultural Budget
-                      </Badge>
-                    </div>
-                  </form>
-                </TabsContent>
-
-                {/* CTA Section */}
-                <div className="relative">
-                  <div className="absolute inset-0 -z-10 bg-gradient-to-r from-raspberry/10 via-amber/10 to-raspberry/10 rounded-3xl" />
-                  <div className="py-12 md:py-16 text-center space-y-8">
-                    <div className="space-y-4 max-w-3xl mx-auto">
-                      <h2 className="text-3xl md:text-4xl font-medium">Ready to experience AI-powered travel?</h2>
-                      <p className="text-xl text-muted-foreground">
-                        Join thousands of travelers who have discovered their perfect journeys with TravelMood AI
-                      </p>
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                      <Button 
-                        size="lg" 
-                        className="bg-raspberry hover:bg-raspberry/90" 
-                        onClick={handleStartJourney}
-                      >
-                        <Sparkles className="mr-2 h-5 w-5" />
-                        Let's Start the journey?
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Tabs>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* AI Match Destinations */}
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-3xl font-medium">AI-Matched Destinations</h2>
-              <Badge className="bg-amber/10 text-amber border-none">
-                <Sparkles className="h-3 w-3 mr-1" />
-                For You
-              </Badge>
-            </div>
-            <p className="text-muted-foreground mt-1">Personalized recommendations based on your preferences and travel history</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {aiRecommendedDestinations.map((destination) => (
-          <Card
-            key={destination.name}
-            className="overflow-hidden hover:shadow-md transition-all duration-300 cursor-pointer group"
+          <form
+            className="mt-8"
+            onSubmit={(e) => {
+              e.preventDefault();
+              startTrip(prompt);
+            }}
           >
-            <AspectRatio ratio={3 / 4} className="bg-muted">
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <div className="absolute inset-0 flex items-end p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
-                  className="w-full"
-                  onClick={(e) => {
-                    e.stopPropagation(); // Prevent any parent click handlers from firing
-                    // Open the external link in a new tab
-                    window.open(destination.externalLink, "_blank", "noopener,noreferrer");
-                  }}
-                >
-                  Explore
+            <label htmlFor="trip-prompt" className="text-sm font-semibold">
+              Describe your trip
+            </label>
+            <div className="mt-2 rounded-surface border border-input bg-background p-2 transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25">
+              <textarea
+                id="trip-prompt"
+                rows={3}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    startTrip(prompt);
+                  }
+                }}
+                placeholder="Where, when, from where, who's coming, what you enjoy"
+                aria-describedby="trip-prompt-hint"
+                className="block w-full resize-none bg-transparent px-2 py-1.5 text-base outline-none placeholder:text-muted-foreground"
+              />
+              <div className="flex items-center justify-between gap-3 px-2 pb-1">
+                <p id="trip-prompt-hint" className="text-meta text-muted-foreground">
+                  Enter to start · Shift + Enter for a new line
+                </p>
+                <Button type="submit" disabled={!prompt.trim()}>
+                  Plan this trip
+                  <ArrowRight aria-hidden="true" />
                 </Button>
               </div>
-              {/* Destination image */}
-              {destination.imageUrl ? (
-                <img 
-                  src={destination.imageUrl} 
-                  alt={`${destination.name}, ${destination.country}`}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-amber/20 to-raspberry/20">
-                  <span className="text-muted-foreground font-medium">{destination.name}</span>
-                </div>
-              )}
-              <div className="absolute top-3 right-3">
-                <Badge className="bg-raspberry text-white">
-                  {destination.matchScore}% Match
-                </Badge>
-              </div>
-            </AspectRatio>
-            <CardContent className="p-4">
-              <div className="mb-2">
-                <h3 className="font-medium text-lg">{destination.name}</h3>
-                <p className="text-sm text-muted-foreground">{destination.country}</p>
-              </div>
-              <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{destination.description}</p>
-              <div className="flex flex-wrap gap-1">
-                {destination.tags.map(tag => (
-                  <Badge key={tag} variant="outline" className="text-xs bg-muted/50">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        </div>
-      </div>
+            </div>
+          </form>
 
-      {/* How AI Enhances Your Travel */}
-      <div className="relative">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-leaf-green/5 via-teal-blue/10 to-leaf-green/5 rounded-3xl" />
-        <div className="py-12 space-y-8">
-          <div className="text-center max-w-3xl mx-auto space-y-4">
-            <h2 className="text-3xl md:text-4xl font-medium">How AI enhances your travel experience</h2>
-            <p className="text-muted-foreground">Our advanced AI analyzes thousands of data points to create the perfect travel experience</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-8">
-            <Card className="bg-transparent border-none shadow-none">
-              <CardContent className="space-y-4 text-center">
-                <div className="mx-auto w-16 h-16 rounded-full bg-raspberry/10 flex items-center justify-center">
-                  <PlaneTakeoff className="h-8 w-8 text-raspberry" />
-                </div>
-                <h3 className="text-xl font-medium">Personalized Itineraries</h3>
-                <p className="text-muted-foreground">
-                  AI creates custom travel plans based on your interests, pace preferences, and travel style
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-transparent border-none shadow-none">
-              <CardContent className="space-y-4 text-center">
-                <div className="mx-auto w-16 h-16 rounded-full bg-amber/10 flex items-center justify-center">
-                  <Compass className="h-8 w-8 text-amber" />
-                </div>
-                <h3 className="text-xl font-medium">Hidden Gem Discovery</h3>
-                <p className="text-muted-foreground">
-                  Uncover lesser-known attractions and experiences that match your unique preferences
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-transparent border-none shadow-none">
-              <CardContent className="space-y-4 text-center">
-                <div className="mx-auto w-16 h-16 rounded-full bg-leaf-green/10 flex items-center justify-center">
-                  <Clock className="h-8 w-8 text-leaf-green" />
-                </div>
-                <h3 className="text-xl font-medium">Real-time Adaptations</h3>
-                <p className="text-muted-foreground">
-                  AI adjusts your plans based on weather changes, local events, and real-time availability
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="flex justify-center mt-8">
-            {/* Button removed */}
+          <div className="mt-8">
+            <h2 className="text-sm font-semibold">Or start from an example</h2>
+            <ul className="mt-3 flex flex-col gap-2">
+              {exampleTrips.map((trip) => (
+                <li key={trip}>
+                  <button
+                    type="button"
+                    onClick={() => startTrip(trip)}
+                    className="group flex min-h-11 w-full items-center justify-between gap-3 rounded-control border px-4 py-2.5 text-left text-sm hover:border-gray-strong hover:bg-muted"
+                  >
+                    <span>{trip}</span>
+                    <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* AI Travel Insights */}
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
+      {/* Ideas */}
+      <section aria-labelledby="ideas-heading" className="border-t pb-section pt-12">
+        <h2 id="ideas-heading" className="text-title font-semibold">Ideas to explore</h2>
+        <p className="mt-1 text-muted-foreground">Not sure yet? Start from a place, or read a guide first.</p>
+
+        <ul className="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+          {destinations.map((d) => (
+            <li key={d.name} className="group flex flex-col">
+              <IdeaImage src={d.image} alt={`${d.name}, ${d.country}`} ratio="aspect-[4/5]" />
+              <h3 className="mt-3 text-heading font-semibold">{d.name}</h3>
+              <p className="text-sm text-muted-foreground">{d.country} · {d.blurb}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4">
+                <Button
+                  variant="link"
+                  className="min-h-11"
+                  onClick={() => startTrip(`Plan a trip to ${d.name}, ${d.country}. Ask me for dates, origin and budget if you need them.`)}
+                >
+                  Plan a trip here
+                </Button>
+                <ExternalSource href={d.guide} source={d.guideSource}>Guide</ExternalSource>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-14 grid gap-10 lg:grid-cols-[1fr_20rem]">
           <div>
-            <h2 className="text-3xl font-medium">AI Travel Insights</h2>
-            <p className="text-muted-foreground mt-1">Data-driven travel intelligence to enhance your journey</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {aiTravelInsights.map((insight) => (
-            <Card key={insight.title} className="hover:shadow-md transition-all duration-300 cursor-pointer">
-              <CardContent className="p-6 space-y-4">
-                <Badge className="bg-teal-blue/10 text-teal-blue border-none">
-                  {insight.category}
-                </Badge>
-                <h3 className="text-xl font-medium">{insight.title}</h3>
-                <p className="text-muted-foreground">{insight.description}</p>
-              </CardContent>
-
-              <CardFooter className="pt-0 pb-6 px-6">
-                <Button 
-                  variant="ghost" 
-                  className="p-0 h-auto text-raspberry hover:text-raspberry/80"
-                  onClick={() => window.open(insight.url, '_blank')}
-                >
-                  Read full analysis <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Testimonials */}
-      <div className="relative">
-        <div className="absolute inset-0 -z-10 bg-muted/30 rounded-3xl" />
-        <div className="py-12 space-y-8">
-          <div className="text-center max-w-3xl mx-auto">
-            <h2 className="text-3xl font-medium mb-4">Travelers love our AI planner</h2>
+            <h3 className="text-heading font-semibold">By travel style</h3>
+            <ul className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
+              {travelStyles.map((s) => (
+                <li key={s.name}>
+                  <a
+                    href={s.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group block rounded-lg"
+                  >
+                    <IdeaImage src={s.image} alt="" ratio="aspect-square" />
+                    <span className="mt-2 flex items-center gap-1.5 text-sm font-semibold">
+                      {s.name}
+                      <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                    </span>
+                    <span className="sr-only">(opens {s.source} in a new tab)</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {testimonials.map((testimonial, index) => (
-              <Card key={index} className="bg-background">
-                <CardContent className="p-6 space-y-4">
-                  <div className="flex items-center gap-4">
-                    {/* Testimonial user avatar */}
-                    {testimonial.imageUrl ? (
-                      <div className="w-12 h-12 rounded-full overflow-hidden">
-                        <img 
-                          src={testimonial.imageUrl} 
-                          alt={testimonial.name} 
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                        <span className="text-muted-foreground font-medium">{testimonial.name.charAt(0)}</span>
-                      </div>
-                    )}
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-1">
-                        {[...Array(5)].map((_, i) => (
-                          <Star 
-                            key={i} 
-                            className={`h-4 w-4 ${i < testimonial.rating ? "fill-amber text-amber" : "text-muted"}`} 
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <p className="italic">"{testimonial.comment}"</p>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{testimonial.name}</p>
-                      <p className="text-sm text-muted-foreground">{testimonial.location}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+          <div>
+            <h3 className="text-heading font-semibold">Worth a read</h3>
+            <ul className="mt-2 divide-y">
+              {readingList.map((r) => (
+                <li key={r.url} className="py-2">
+                  <a
+                    href={r.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex min-h-11 items-start justify-between gap-3 rounded-md py-1"
+                  >
+                    <span>
+                      <span className="block font-semibold group-hover:text-raspberry">{r.title}</span>
+                      <span className="text-meta text-muted-foreground">{r.source}</span>
+                    </span>
+                    <ExternalLink className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <span className="sr-only">(opens in a new tab)</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
-      </div>
-
-      {/* Travel Categories */}
-      <div className="space-y-8">
-        <h2 className="text-3xl font-medium">Explore by travel style</h2>
-        
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {travelCategories.map((category) => (
-            <Card 
-              key={category.name} 
-              className="cursor-pointer hover:shadow-md transition-all duration-300 group overflow-hidden"
-              onClick={() => window.open(category.externalLink, "_blank", "noopener,noreferrer")}
-            >
-              <AspectRatio ratio={1/1}>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                <div className="absolute inset-0 flex flex-col justify-end p-4">
-                  <div className={`mb-2 bg-${category.color}/80 text-white w-10 h-10 rounded-full flex items-center justify-center`}>
-                    {category.icon}
-                  </div>
-                  <h3 className="text-xl font-medium text-white">{category.name}</h3>
-                  <p className="text-white/80 text-sm">{category.description}</p>
-                </div>
-                {/* Category image */}
-                {category.imageUrl ? (
-                  <img 
-                    src={category.imageUrl} 
-                    alt={category.name} 
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className={`h-full w-full bg-gradient-to-br from-${category.color}/20 to-${category.color === 'raspberry' ? 'amber' : category.color === 'amber' ? 'leaf-green' : category.color === 'leaf-green' ? 'teal-blue' : 'raspberry'}/20`} />
-                )}
-              </AspectRatio>
-            </Card>
-          ))}
-        </div>
-      </div>
+      </section>
     </div>
   );
 };
 
 export default HomePage;
-
-
-
-
-
-

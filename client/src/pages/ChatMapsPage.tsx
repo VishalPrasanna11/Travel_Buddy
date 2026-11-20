@@ -108,7 +108,7 @@ function ChatArea() {
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full">
             <h2 className="text-xl font-medium mb-4">Enter a travel destination</h2>
-            <p className="text-gray-500">Type a city, country, or landmark</p>
+            <p className="text-muted-foreground">Type a city, country, or landmark</p>
           </div>
         ) : (
           <div className="chat-messages">
@@ -133,7 +133,7 @@ function ChatArea() {
       </ChatForm>
 
       {isProcessingLocations && (
-        <div className="absolute bottom-16 left-4 bg-blue-50 text-blue-700 text-xs py-1 px-2 rounded-md flex items-center">
+        <div className="absolute bottom-16 left-4 bg-muted text-foreground text-xs py-1 px-2 rounded-md flex items-center">
           <MapPin className="h-3 w-3 mr-1 animate-pulse" />
           Processing...
         </div>

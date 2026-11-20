@@ -1,332 +1,218 @@
-import { ChangeEvent, ReactNode, useRef, useEffect, useState } from 'react';
-import { type Message } from '@/components/ui/chat-message';
-import { ChatContainer } from '@/components/ui/chat';
-import { ChatForm } from '@/components/ui/chat';
-import { MessageInput } from '@/components/ui/message-input';
-import { ThumbsUp, ThumbsDown, MapPin } from 'lucide-react';
-import WeatherDisplay from './WeatherDisplay';
-import { useLocation, Location } from './LocationContext';
+import { ChangeEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowDown, Pencil, RotateCcw } from 'lucide-react';
+import { useAuth0 } from '@auth0/auth0-react';
 
-// Define props including the location detection callback
+import { MessageRow } from '@/components/ui/message-row';
+import { Notice } from '@/components/ui/notice';
+import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/ui/copy-button';
+import { AnswerMarkdown } from '@/components/chat/answer-markdown';
+import { ResultCards } from '@/components/chat/result-cards';
+import { WeatherNote } from '@/components/chat/weather-note';
+import { AgentProgress } from '@/components/chat/agent-progress';
+import { Composer, type ComposerHandle } from '@/components/chat/composer';
+import { ChatWelcome } from '@/components/chat/chat-welcome';
+import type { ChatMessage } from '@/components/chat/types';
+
 type ChatComponentProps = {
-  messages: Message[];
+  messages: ChatMessage[];
   input: string;
-  isTyping: boolean;
-  isLoading: boolean;
-  isEmpty: boolean;
+  pending: boolean;
+  pendingSince: number | null;
+  ready: boolean;
   onInputChange: (e: ChangeEvent<HTMLTextAreaElement>) => void;
-  onSubmit: (event?: { preventDefault?: () => void }) => void;
-  onLocationDetected?: (locations: Location[]) => void;
-  children?: ReactNode;
+  onSend: () => void;
+  onPick: (prompt: string) => void;
+  onRetry: (errorId: string) => void;
+  onEdit: (errorId: string) => void;
+  onNewTrip: () => void;
 };
 
-export default function ChatComponent({
-  messages,
-  input,
-  isTyping,
-  isLoading,
-  isEmpty,
-  onInputChange,
-  onSubmit,
-  onLocationDetected,
-  children
-}: ChatComponentProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const processedMessagesRef = useRef<Set<string>>(new Set());
+const NEAR_BOTTOM_PX = 120;
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+const ERROR_COPY: Record<NonNullable<ChatMessage['error']>['kind'], { title: string; body: string }> = {
+  timeout: {
+    title: 'No answer after 2 minutes',
+    body: 'The planners took too long. Try again, or ask for a smaller part of the trip first (for example, just hotels).',
+  },
+  network: {
+    title: "Couldn't reach TravelBuddy",
+    body: 'Check your connection, then try again. Your question is still here.',
+  },
+  server: {
+    title: 'Something went wrong on our side',
+    body: 'The planner hit an error before it could answer. Trying again usually works.',
+  },
+  incomplete: {
+    title: 'The answer stopped before it finished',
+    body: 'The server closed the connection mid-answer. Try again; nothing was lost.',
+  },
+};
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Process messages for location data
-  useEffect(() => {
-    if (messages.length > 0 && onLocationDetected) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.role === 'assistant' && !processedMessagesRef.current.has(lastMessage.id)) {
-        // Mark this message as processed to prevent reprocessing
-        processedMessagesRef.current.add(lastMessage.id);
-        processResponseForLocations(lastMessage.content);
-      }
-    }
-  }, [messages, onLocationDetected]);
-
-  // Extract location data from responses
-  const processResponseForLocations = (content: string) => {
-    if (!content || !onLocationDetected) return;
-    
-    try {
-      // First try to find JSON data in the response
-      const jsonMatches = content.match(/({[\s\S]*})/);
-      
-      if (jsonMatches && jsonMatches[0]) {
-        try {
-          const jsonStr = jsonMatches[0];
-          const data = JSON.parse(jsonStr);
-          const locations: Location[] = [];
-          
-          // Process attractions (from London format)
-          if (data.attractions && Array.isArray(data.attractions)) {
-            data.attractions.forEach((attraction: any) => {
-              if (attraction.location?.lat && attraction.location?.lng) {
-                locations.push({
-                  name: attraction.name,
-                  lat: attraction.location.lat,
-                  lng: attraction.location.lng,
-                  // address: attraction.address,
-                  // rating: attraction.rating,
-                  // photo_url: attraction.photo_url,
-                  // total_ratings: attraction.total_ratings,
-                  // types: attraction.types,
-                  type: 'primary' // Set attractions as primary pins
-                });
-              }
-            });
-          }
-          
-          // Process attractions_list (from Boston format)
-          if (data.attractions_list?.attractions && Array.isArray(data.attractions_list.attractions)) {
-            data.attractions_list.attractions.forEach((attraction: any) => {
-              if (attraction.location?.lat && attraction.location?.lng) {
-                locations.push({
-                  name: attraction.name,
-                  lat: attraction.location.lat,
-                  lng: attraction.location.lng,
-                  // address: attraction.address,
-                  // rating: attraction.rating,
-                  // photo_url: attraction.photo_url,
-                  // total_ratings: attraction.total_ratings,
-                  // types: attraction.types,
-                  type: 'primary'
-                });
-              }
-            });
-          }
-          
-          // Process hotels
-          if (data.hotels?.data && Array.isArray(data.hotels.data)) {
-            data.hotels.data.forEach((hotelOffer: any) => {
-              if (hotelOffer.hotel?.location?.lat && hotelOffer.hotel?.location?.lng) {
-                locations.push({
-                  name: hotelOffer.hotel.name,
-                  lat: hotelOffer.hotel.location.lat,
-                  lng: hotelOffer.hotel.location.lng,
-                  // address: hotelOffer.hotel.cityCode || "",
-                  type: 'secondary', // Set hotels as secondary pins
-                  relevanceScore: 90
-                });
-              }
-            });
-          }
-          
-          // Process restaurants
-          if (data.restaurants && Array.isArray(data.restaurants)) {
-            data.restaurants.forEach((restaurant: any) => {
-              if (restaurant.location?.lat && restaurant.location?.lng) {
-                locations.push({
-                  name: restaurant.name,
-                  lat: restaurant.location.lat,
-                  lng: restaurant.location.lng,
-                  // address: restaurant.address,
-                  // rating: restaurant.rating,
-                  // photo_url: restaurant.photo_url,
-                  // total_ratings: restaurant.total_ratings,
-                  // types: restaurant.types,
-                  type: 'reference' // Set restaurants as reference pins
-                });
-              }
-            });
-          }
-          
-          if (locations.length > 0) {
-            // console.log("Found locations in JSON:", locations);
-            onLocationDetected(locations);
-            return;
-          }
-        } catch (err) {
-          console.error("Error parsing JSON:", err);
-        }
-      }
-      
-      // Fallback: try to extract coordinates from markdown text
-      const locationRegex = /📍.*?(\-?\d+\.\d+),\s*(\-?\d+\.\d+)/g;
-      const locations: Location[] = [];
-      let match;
-      
-      while ((match = locationRegex.exec(content)) !== null) {
-        const lat = parseFloat(match[1]);
-        const lng = parseFloat(match[2]);
-        
-        if (!isNaN(lat) && !isNaN(lng)) {
-          const nameMatch = content.match(/(\w+.*?)\s*📍/);
-          const name = nameMatch ? nameMatch[1].trim() : "Location";
-          
-          locations.push({
-            name,
-            lat,
-            lng,
-            type: 'primary'
-          });
-        }
-      }
-      
-      if (locations.length > 0) {
-        // console.log("Found locations in text:", locations);
-        onLocationDetected(locations);
-      }
-    } catch (err) {
-      console.error("Error processing response for locations:", err);
-    }
-  };
-
-  const stop = () => {
-    // Since your API doesn't support streaming, this is a no-op
-    // But we keep it for API compatibility
-  };
-
+function ErrorTurn({ message, onRetry, onEdit, onNewTrip, disabled }: { message: ChatMessage; onRetry: () => void; onEdit: () => void; onNewTrip: () => void; disabled: boolean }) {
+  const copy = ERROR_COPY[message.error?.kind ?? 'server'];
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] relative">
-      <div 
-        className="flex-1 overflow-y-auto pr-2 chat-scrollbar"
-        ref={chatContainerRef}
-        style={{
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#d1d5db transparent'
-        }}
-      >
-        {isEmpty ? (
-          <div className="flex flex-col items-center justify-center h-full">
-            {children}
-          </div>
-        ) : (
-          <div className="py-4 px-4">
-            {messages.map((message, index) => (
-              <div key={message.id} className="mb-4">
-                <div className="flex items-start">
-                  {/* Avatar */}
-                  <div className="mr-3 mt-1">
-                    {message.role === "user" ? (
-                      <div className="w-8 h-8 rounded-full bg-orange-600 flex items-center justify-center text-white font-semibold">
-                        V
-                      </div>
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center text-white">
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12 2L6 7L12 12L18 7L12 2Z" fill="white" />
-                          <path d="M12 12L6 7L6 17L12 22L18 17L18 7L12 12Z" fill="white" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Message content */}
-                  <div className="flex-1">
-                    {/* Message text */}
-                    <div className="text-sm prose prose-sm max-w-none">
-                      {message.role === "assistant" ? (
-                        <>
-                          <WeatherDisplay content={message.content} />
-                          <div dangerouslySetInnerHTML={{ __html: convertMarkdownToHTML(message.content) }} />
-                        </>
-                      ) : (
-                        <p>{message.content}</p>
-                      )}
-                    </div>
-                    
-                    {/* Feedback buttons (only for assistant messages) */}
-                    {message.role === "assistant" && (
-                      <div className="flex items-center space-x-2 mt-2">
-                        <button className="p-1 hover:bg-gray-100 rounded">
-                          <ThumbsUp size={16} className="text-gray-500" />
-                        </button>
-                        <button className="p-1 hover:bg-gray-100 rounded">
-                          <ThumbsDown size={16} className="text-gray-500" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {/* Loading indicator */}
-            {isTyping && (
-              <div className="flex items-start">
-                <div className="mr-3 mt-1">
-                  <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center text-white">
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 2L6 7L12 12L18 7L12 2Z" fill="white" />
-                      <path d="M12 12L6 7L6 17L12 22L18 17L18 7L12 12Z" fill="white" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <div className="typing-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </div>
-      
-      <div className="px-4 pb-4 sticky bottom-0 bg-white border-t">
-        <ChatForm
-          className="bg-white rounded-xl border"
-          isPending={isLoading || isTyping}
-          handleSubmit={onSubmit}
-        >
-          {({ setFiles }) => (
-            <MessageInput
-              value={input}
-              onChange={onInputChange}
-              stop={stop}
-              isGenerating={isLoading || isTyping}
-              placeholder="Ask anything..."
-            />
-          )}
-        </ChatForm>
-      </div>
-    </div>
+    <Notice
+      tone="error"
+      className="max-w-prose"
+      title={copy.title}
+      description={<p>{copy.body}{message.error?.message && message.error.kind === 'server' ? <span className="mt-1 block text-meta text-muted-foreground">Details: {message.error.message}</span> : null}</p>}
+      actions={
+        <>
+          <Button size="sm" onClick={onRetry} disabled={disabled}><RotateCcw aria-hidden="true" />Try again</Button>
+          <Button size="sm" variant="outline" onClick={onEdit} disabled={disabled}><Pencil aria-hidden="true" />Edit question</Button>
+          <Button size="sm" variant="ghost" onClick={onNewTrip}>Start a new trip</Button>
+        </>
+      }
+    />
   );
 }
 
-// Helper function to convert markdown to HTML
-function convertMarkdownToHTML(markdown: string): string {
-  // This is a very simple markdown converter
-  // In a real app, you might want to use a library like marked.js
-  
-  // Convert links with location icon
-  markdown = markdown.replace(
-    /📍 ([^:]+):/g, 
-    '<span class="flex items-center"><span class="mr-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 13C13.6569 13 15 11.6569 15 10C15 8.34315 13.6569 7 12 7C10.3431 7 9 8.34315 9 10C9 11.6569 10.3431 13 12 13Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 22C16 18 20 14.4183 20 10C20 5.58172 16.4183 2 12 2C7.58172 2 4 5.58172 4 10C4 14.4183 8 18 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><strong>$1:</strong></span>'
+export default function ChatComponent({
+  messages, input, pending, pendingSince, ready,
+  onInputChange, onSend, onPick, onRetry, onEdit, onNewTrip,
+}: ChatComponentProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<ComposerHandle>(null);
+  const nearBottom = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
+  const { user } = useAuth0();
+  const userInitial = (user?.given_name || user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
+  const isEmpty = messages.length === 0;
+
+  const scrollToBottom = useCallback((smooth = true) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth && !reduce ? 'smooth' : 'auto' });
+  }, []);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    nearBottom.current = distance < NEAR_BOTTOM_PX;
+    if (nearBottom.current) setShowJump(false);
+  };
+
+  // First paint of a saved conversation: start at the latest turn.
+  useLayoutEffect(() => {
+    if (ready && !isEmpty) scrollToBottom(false);
+    // Only on first ready; later turns are handled below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, scrollToBottom]);
+
+  // New turns: follow only if the reader is already at the bottom, or it's
+  // their own message. Otherwise offer "Jump to latest".
+  const lastId = messages[messages.length - 1]?.id;
+  const lastRole = messages[messages.length - 1]?.role;
+  useEffect(() => {
+    if (!lastId) return;
+    if (lastRole === 'user' || nearBottom.current) {
+      requestAnimationFrame(() => scrollToBottom());
+    } else {
+      setShowJump(true);
+    }
+  }, [lastId, lastRole, scrollToBottom]);
+
+  useEffect(() => {
+    if (pending && nearBottom.current) requestAnimationFrame(() => scrollToBottom());
+  }, [pending, scrollToBottom]);
+
+  // Screen-reader announcements for the slow, async parts.
+  const prevPending = useRef(pending);
+  useEffect(() => {
+    if (pending && !prevPending.current) setAnnouncement('Planning your trip. This usually takes 20 to 40 seconds.');
+    if (!pending && prevPending.current) {
+      const last = messages[messages.length - 1];
+      setAnnouncement(last?.status === 'error' ? 'Something went wrong. Options to try again are below.' : 'Your answer is ready.');
+    }
+    prevPending.current = pending;
+  }, [pending, messages]);
+
+  const handleEdit = (id: string) => {
+    onEdit(id);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  };
+
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
+
+      <div ref={scrollRef} onScroll={onScroll} className="scroll-thin min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {!ready ? (
+          <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6" aria-hidden="true">
+            <div className="ml-auto h-12 w-2/3 animate-breathe rounded-2xl bg-muted" />
+            <div className="h-32 w-full animate-breathe rounded-xl bg-muted" />
+          </div>
+        ) : isEmpty && !pending ? (
+          <ChatWelcome onPick={onPick} />
+        ) : (
+          <div className="mx-auto w-full max-w-3xl px-4 py-6">
+            <h2 className="sr-only">Conversation</h2>
+            <ol className="space-y-8">
+              {messages.map((m) => (
+                <li key={m.id} className="animate-rise-in">
+                  {m.role === 'user' ? (
+                    <MessageRow role="user" initial={userInitial}>
+                      <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.content}</p>
+                    </MessageRow>
+                  ) : m.status === 'error' ? (
+                    <MessageRow role="assistant">
+                      <ErrorTurn
+                        message={m}
+                        disabled={pending}
+                        onRetry={() => onRetry(m.id)}
+                        onEdit={() => handleEdit(m.id)}
+                        onNewTrip={onNewTrip}
+                      />
+                    </MessageRow>
+                  ) : (
+                    <MessageRow
+                      role="assistant"
+                      footer={<CopyButton content={m.content} copyMessage="Answer copied" label="Copy answer" />}
+                    >
+                      <AnswerMarkdown>{m.content}</AnswerMarkdown>
+                      <WeatherNote data={m.data} answer={m.content} />
+                      <ResultCards data={m.data} />
+                    </MessageRow>
+                  )}
+                </li>
+              ))}
+              {pending && pendingSince && (
+                <li>
+                  <MessageRow role="assistant">
+                    <AgentProgress since={pendingSince} />
+                  </MessageRow>
+                </li>
+              )}
+            </ol>
+          </div>
+        )}
+      </div>
+
+      {showJump && (
+        <button
+          type="button"
+          onClick={() => { scrollToBottom(); setShowJump(false); }}
+          className="absolute bottom-28 left-1/2 z-10 inline-flex h-10 -translate-x-1/2 animate-rise-in items-center gap-1.5 rounded-full border bg-background px-4 text-sm font-medium text-ink shadow-overlay hover:bg-muted pointer-coarse:h-11"
+        >
+          <ArrowDown className="size-4" aria-hidden="true" />
+          Jump to latest
+        </button>
+      )}
+
+      <div className="shrink-0 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <Composer
+          ref={composerRef}
+          value={input}
+          onChange={onInputChange}
+          onSend={onSend}
+          pending={pending}
+          disabled={!ready}
+        />
+      </div>
+    </div>
   );
-  
-  // Convert numbered lists
-  markdown = markdown.replace(
-    /^\d+\.\s+(.+)$/gm, 
-    '<div class="flex items-start my-2"><span class="mr-2 min-w-[24px] font-bold">$&</span></div>'
-  );
-  
-  // Convert bold text
-  markdown = markdown.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  
-  // Convert bullet points
-  markdown = markdown.replace(
-    /^\*\s+(.+)$/gm,
-    '<div class="flex items-start my-2"><span class="mr-2">•</span><span>$1</span></div>'
-  );
-  
-  // Convert paragraphs
-  markdown = markdown.split('\n\n').map(para => `<p>${para}</p>`).join('');
-  
-  return markdown;
 }

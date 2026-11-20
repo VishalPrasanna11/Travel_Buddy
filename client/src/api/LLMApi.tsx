@@ -1,91 +1,99 @@
-import { useMutation } from "@tanstack/react-query";
-import { useAuth0 } from "@auth0/auth0-react";
+import type { ChatErrorKind } from "@/components/chat/types";
 
 const API_BASE_URL = import.meta.env.VITE_BASE_URL;
 
-// Define types for messages in chat history
-type Message = {
-  role: string;
-  content: string;
-};
+/** Longest we wait for one answer before telling the user it timed out. */
+export const ASK_TIMEOUT_MS = 120_000;
 
-// Updated request type with chat history, chat_id, and user_email
-type TravelQuestion = {
+type Message = { role: string; content: string };
+
+export type TravelQuestion = {
   query: string;
   chat_history?: Message[];
   chat_id?: string;
   user_email?: string;
 };
 
-// Response type remains the same
-type TravelResponse = {
+/** Raw response: text answer plus whatever structured fields the agents returned. */
+export type TravelResponse = {
   status: string;
   answer: string;
   model: string;
+  chat_id?: string;
+  [key: string]: unknown;
 };
 
-export const useAskTravelQuestion = () => {
-  // Get user information from Auth0
-  const { user } = useAuth0();
-  
-  const askTravelQuestionRequest = async (question: TravelQuestion): Promise<TravelResponse> => {
-    // Get email from Auth0 user object if available
-    const userEmail = user?.email || question.user_email || "";
-    
-    // Ensure chat_history is an array of objects with role and content fields
-    const validChatHistory = (question.chat_history || []).map(msg => ({
-      role: msg.role === "user" || msg.role === "assistant" || msg.role === "system" 
-        ? msg.role 
-        : "user", // Default to user if invalid role
-      content: msg.content || ""
-    }));
-    
-    // Ensure all required fields are included in the request
-    const requestData = {
-      query: question.query,
-      chat_history: validChatHistory,
-      chat_id: question.chat_id || "",
-      user_email: userEmail
-    };
+export class AskError extends Error {
+  kind: ChatErrorKind;
+  constructor(kind: ChatErrorKind, message: string) {
+    super(message);
+    this.kind = kind;
+  }
+}
 
-    // console.log("Sending request to API:", JSON.stringify(requestData));
+/**
+ * POST /api/llm/ask-question. The server streams keep-alive spaces and then
+ * one JSON document. Contract unchanged; this only adds a timeout and
+ * typed errors so the UI can explain what happened.
+ */
+export async function askTravelQuestion(
+  question: TravelQuestion,
+  { signal }: { signal?: AbortSignal } = {}
+): Promise<TravelResponse> {
+  const requestData = {
+    query: question.query,
+    chat_history: (question.chat_history || []).map((msg) => ({
+      role: msg.role === "user" || msg.role === "assistant" || msg.role === "system" ? msg.role : "user",
+      content: msg.content || "",
+    })),
+    chat_id: question.chat_id || "",
+    user_email: question.user_email || "",
+  };
 
-    const response = await fetch(`${API_BASE_URL}/api/llm/ask-question`, {
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), ASK_TIMEOUT_MS);
+  const onAbort = () => timeout.abort();
+  signal?.addEventListener("abort", onAbort);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/llm/ask-question`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestData),
+      signal: timeout.signal,
     });
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.detail || "Failed to get answer from Travel AI";
-      throw new Error(errorMessage);
+  } catch (err) {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+    if (timeout.signal.aborted && !signal?.aborted) {
+      throw new AskError("timeout", "No answer after 2 minutes.");
     }
-    
-    const responseData = await response.json();
-    // console.log("API response data:", responseData);
-    return responseData;
-  };
-  
-  const {
-    mutateAsync: askQuestion,
-    isPending,
-    isError,
-    isSuccess,
-    data: travelResponse,
-    reset
-  } = useMutation({
-    mutationFn: askTravelQuestionRequest
-  });
-  
-  return {
-    askQuestion,
-    isLoading: isPending,
-    isError,
-    isSuccess,
-    travelResponse,
-    reset
-  };
-};
+    if (signal?.aborted) throw err;
+    throw new AskError("network", "Couldn't reach TravelBuddy. Check your connection.");
+  }
+
+  try {
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({} as { detail?: string }));
+      throw new AskError("server", body.detail || `The server returned an error (${response.status}).`);
+    }
+    const text = await response.text();
+    try {
+      return JSON.parse(text) as TravelResponse;
+    } catch {
+      // 200 + keep-alive bytes, then the server failed before sending JSON.
+      throw new AskError("incomplete", "The answer stopped before it finished.");
+    }
+  } catch (err) {
+    if (err instanceof AskError) throw err;
+    if (timeout.signal.aborted && !signal?.aborted) {
+      throw new AskError("timeout", "No answer after 2 minutes.");
+    }
+    if (signal?.aborted) throw err;
+    throw new AskError("network", "The connection dropped while waiting for the answer.");
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+  }
+}

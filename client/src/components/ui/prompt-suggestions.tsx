@@ -31,12 +31,12 @@ export function PromptSuggestions({
           <button
             key={suggestion}
             onClick={() => append({ role: "user", content: suggestion })}
-            className="w-full flex items-center border border-gray-200 rounded-xl p-4 hover:bg-gray-50 transition-colors text-left"
+            className="w-full flex items-center border border-border rounded-xl p-4 hover:bg-accent transition-colors text-left"
           >
-            <div className="mr-3 text-gray-600">
+            <div className="mr-3 text-muted-foreground">
               {getIcon(suggestion)}
             </div>
-            <span className="text-gray-800">{suggestion}</span>
+            <span className="text-foreground">{suggestion}</span>
           </button>
         ))}
       </div>

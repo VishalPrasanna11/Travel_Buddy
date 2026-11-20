@@ -4,19 +4,31 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Badge / Chip. Text is always ink or white so every variant passes AA.
+ * Category variants follow the palette roles in DESIGN.md:
+ * flight = Teal Blue, stay = Amber, success = Leaf Green,
+ * estimate = Sunshine Yellow, subtle = Soft Pink.
+ */
 const badgeVariants = cva(
-  "inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden",
+  [
+    "inline-flex w-fit shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5",
+    "text-xs font-medium transition-colors [&>svg]:pointer-events-none [&>svg]:size-3.5",
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+  ].join(" "),
   {
     variants: {
       variant: {
-        default:
-          "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
-        secondary:
-          "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
-        destructive:
-          "border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
-        outline:
-          "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+        default: "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-raspberry-hover",
+        secondary: "border-transparent bg-secondary text-secondary-foreground",
+        destructive: "border-transparent bg-danger-tint text-destructive",
+        outline: "border-border bg-background text-foreground [a&]:hover:bg-muted",
+        neutral: "border-transparent bg-muted text-foreground",
+        flight: "border-transparent bg-flight-tint text-ink [&>svg]:text-flight-ink",
+        stay: "border-transparent bg-stay-tint text-ink [&>svg]:text-stay-ink",
+        success: "border-transparent bg-success-tint text-ink [&>svg]:text-success-ink",
+        estimate: "border-transparent bg-estimate-tint text-ink",
+        subtle: "border-transparent bg-soft-pink text-ink",
       },
     },
     defaultVariants: {

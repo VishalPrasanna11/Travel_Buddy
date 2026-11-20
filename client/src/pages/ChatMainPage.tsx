@@ -1,95 +1,119 @@
-import { LocationProvider, useLocation } from "@/components/LocationContext";
-import { TravelMapComponent } from "@/components/TravelMapComponent";
-import { useParams } from 'react-router-dom';
-import { useChat } from "@/hooks/useChat";
-import { PromptSuggestions } from "@/components/ui/prompt-suggestions";
-import ChatComponent from "@/components/ChatComponent";
-import { useEffect, useCallback } from 'react';
-import type { Location } from '@/components/LocationContext';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Map as MapIcon, Plus } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
-function ChatArea() {
-  const params = useParams();
-  const { 
-    messages, 
-    input, 
-    isTyping, 
-    isLoading,
-    handleInputChange,
-    handleSubmit,
-    append,
-    resetChat
-  } = useChat(params.id);
-  
-  const { addDetectedLocations, clearDetectedLocations } = useLocation();
-  const isEmpty = messages.length === 0;
+import { LocationProvider, useLocation as useMapLocations } from '@/components/LocationContext';
+import { TravelMapComponent } from '@/components/TravelMapComponent';
+import ChatComponent from '@/components/ChatComponent';
+import { useChat } from '@/hooks/useChat';
+import { cn } from '@/lib/utils';
 
-  // Clear locations when starting a new chat
+/** Router state other pages can pass to start a trip (see HomePage). */
+type LaunchState = { prompt?: string } | null;
+
+function ChatArea({ id, mapToggle }: { id: string; mapToggle: React.ReactNode }) {
+  const navigate = useNavigate();
+  const routerLocation = useLocation();
+  const chat = useChat(id);
+  const { detectedLocations } = useMapLocations();
+
+  const startNewTrip = useCallback(() => {
+    navigate(`/chat/${uuidv4()}`, { viewTransition: true });
+  }, [navigate]);
+
+  // Auto-send a prompt handed over from /home once, then clear it so a
+  // refresh doesn't send it again.
+  const launched = useRef<string | null>(null);
   useEffect(() => {
-    if (isEmpty) {
-      clearDetectedLocations();
-    }
-  }, [isEmpty, clearDetectedLocations]);
+    const prompt = (routerLocation.state as LaunchState)?.prompt;
+    if (!prompt || !chat.isReady || launched.current === id) return;
+    launched.current = id;
+    navigate(routerLocation.pathname, { replace: true, state: null });
+    if (chat.messages.length === 0) chat.send(prompt);
+  }, [routerLocation.state, routerLocation.pathname, chat.isReady, chat.messages.length, chat, id, navigate]);
 
-  // Travel suggestions
-  const travelSuggestions = [
-    "Plan a vacation to Paris", 
-    "Find hotels in New York", 
-    "What are good attractions in Tokyo?"
-  ];
-
-  // Handler for detected locations - Using useCallback to prevent recreation on every render
-  const handleLocationDetected = useCallback((locations: Location[]) => {
-    if (locations && locations.length > 0) {
-      // console.log("Adding locations to map from ChatComponent:", locations);
-      addDetectedLocations(locations);
-    }
-  }, [addDetectedLocations]);
+  const hasMessages = chat.messages.length > 0;
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-2 border-b bg-white flex justify-between">
-        {/* <h2 className="text-xl font-semibold">Travel Assistant</h2> */}
-        {!isEmpty && (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
+        {hasMessages ? (
           <button
-            onClick={resetChat}
-            className="text-sm text-gray-500 hover:text-gray-700"
+            type="button"
+            onClick={startNewTrip}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:h-11"
           >
-            Start New Chat
+            <Plus className="size-4" aria-hidden="true" />
+            New trip
           </button>
+        ) : (
+          <span className="px-2 text-sm text-muted-foreground">New trip</span>
+        )}
+        {mapToggle && (
+          <span className="flex items-center gap-1">
+            {detectedLocations.length > 0 && (
+              <span className="text-meta text-muted-foreground xl:hidden tabular">{detectedLocations.length} on map</span>
+            )}
+            {mapToggle}
+          </span>
         )}
       </div>
-      
+
       <ChatComponent
-        messages={messages}
-        input={input}
-        isTyping={isTyping}
-        isLoading={isLoading}
-        isEmpty={isEmpty}
-        onInputChange={handleInputChange}
-        onSubmit={handleSubmit}
-        onLocationDetected={handleLocationDetected}
-      >
-        {/* Use PromptSuggestions for empty state */}
-        <PromptSuggestions 
-          label="Travel Assistant"
-          append={append}
-          suggestions={travelSuggestions}
-        />
-      </ChatComponent>
+        messages={chat.messages}
+        input={chat.input}
+        pending={chat.status === 'pending'}
+        pendingSince={chat.pendingSince}
+        ready={chat.isReady}
+        onInputChange={chat.handleInputChange}
+        onSend={() => chat.send(chat.input)}
+        onPick={(prompt) => chat.send(prompt)}
+        onRetry={chat.retry}
+        onEdit={chat.editFailed}
+        onNewTrip={startNewTrip}
+      />
     </div>
   );
 }
 
 export default function ChatMainPage() {
+  const { id = '' } = useParams();
+  // Below xl (1280px) the map is opt-in so the conversation and composer keep the
+  // full height. At xl and up, chat and map sit side by side.
+  const [mapOpen, setMapOpen] = useState(false);
+
+  const mapToggle = (
+    <button
+      type="button"
+      onClick={() => setMapOpen((v) => !v)}
+      aria-expanded={mapOpen}
+      aria-controls="trip-map"
+      className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground xl:hidden pointer-coarse:h-11"
+    >
+      <MapIcon className="size-4" aria-hidden="true" />
+      {mapOpen ? 'Hide map' : 'Show map'}
+    </button>
+  );
+
   return (
     <LocationProvider>
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] overflow-hidden">
-        <div className="w-full lg:w-1/2 h-1/2 lg:h-full border-r">
-          <ChatArea />
-        </div>
-        <div className="w-full lg:w-1/2 h-1/2 lg:h-full">
+      <h1 className="sr-only">Trip planner chat</h1>
+      <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
+        <section aria-label="Conversation" className="flex min-h-0 flex-1 flex-col xl:w-[55%] xl:flex-none xl:border-r">
+          {/* key: a fresh chat state per conversation id */}
+          <ChatArea key={id} id={id} mapToggle={mapToggle} />
+        </section>
+        <section
+          id="trip-map"
+          aria-label="Trip map"
+          className={cn(
+            'min-h-0 border-t xl:block xl:flex-1 xl:border-t-0',
+            mapOpen ? 'block h-[45dvh] shrink-0 xl:h-auto' : 'hidden'
+          )}
+        >
           <TravelMapComponent />
-        </div>
+        </section>
       </div>
     </LocationProvider>
   );

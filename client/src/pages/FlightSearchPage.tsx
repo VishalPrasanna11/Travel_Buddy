@@ -1,539 +1,506 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { format, addDays, isAfter, isBefore, isEqual } from 'date-fns';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plane, Calendar as CalendarIcon, ArrowRightLeft, Loader2 } from 'lucide-react';
-import Layout from '@/layouts/layout';
-import { cn } from '@/lib/utils';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { toast } from "sonner";
-import { DatePicker } from "@/components/ui/date-picker";
-import { InlineDatePicker } from "@/components/ui/inline-date-picker";
+import { useEffect, useId, useRef, useState } from "react";
+import axios from "axios";
+import { addDays, format, isBefore, isEqual } from "date-fns";
+import { ArrowRightLeft, ExternalLink, Plane, PlaneLanding, PlaneTakeoff, Search } from "lucide-react";
 
-interface Flight {
-  flight_id: string;
-  price_raw: number;
-  price_formatted: string;
-  origin_id: string;
-  destination_id: string;
-  departure_time: string;
-  arrival_time: string;
-  airline_name: string;
-  flight_number: string;
-  load_date: string;
-  duration: string;
+import { Input } from "@/components/ui/input";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Notice } from "@/components/ui/notice";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { InlineDatePicker } from "@/components/ui/inline-date-picker";
+import { cn } from "@/lib/utils";
+
+const API_BASE_URL = import.meta.env.VITE_BASE_URL;
+
+/**
+ * Shape returned by GET /api/flights/search (server/routes/flightRoute.py,
+ * `FlightResult`). Rendered exactly as returned: nothing here is estimated or
+ * filled in on the client.
+ */
+interface FlightSegment {
+  airline?: string;
+  flight_number?: string;
+  origin?: string;
+  destination?: string;
+  departure_time?: string;
+  arrival_time?: string;
+  duration?: string;
+  cabin_class?: string;
+  departure_airport?: string;
+  arrival_airport?: string;
 }
 
-const FlightSearchPage: React.FC = () => {
-  const [tripType, setTripType] = useState<'one-way' | 'round-trip'>('one-way');
-  const [origin, setOrigin] = useState('');
-  const [destination, setDestination] = useState('');
+interface FlightResult {
+  price?: string;
+  segments?: FlightSegment[];
+  stops?: number;
+  fareSourceCode?: string;
+}
+
+type TripType = "one-way" | "round-trip";
+
+type SearchState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "done"; outbound: FlightResult[]; inbound: FlightResult[] | null };
+
+type FieldErrors = Partial<Record<"origin" | "destination" | "departureDate" | "returnDate", string>>;
+
+type SearchSnapshot = {
+  tripType: TripType;
+  origin: string;
+  destination: string;
+  departureDate: Date;
+  returnDate?: Date;
+};
+
+function errorMessageFrom(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    if (!err.response) return "We couldn't reach the flight search service. Check your connection and try again.";
+    const detail = (err.response.data as { detail?: unknown } | undefined)?.detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (err.response.status >= 500) return "The flight search service had a problem. Try again in a moment.";
+    return `The search request was rejected (error ${err.response.status}).`;
+  }
+  return "Something went wrong while searching. Try again.";
+}
+
+function parseDate(value?: string): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function TimeLabel({ value }: { value?: string }) {
+  const d = parseDate(value);
+  if (!d) return <span className="text-muted-foreground">{value || "Time not provided"}</span>;
+  return (
+    <time dateTime={d.toISOString()} className="tabular">
+      <span className="block text-lg font-semibold leading-tight text-foreground">{format(d, "h:mm a")}</span>
+      <span className="block text-meta text-muted-foreground">{format(d, "EEE, MMM d")}</span>
+    </time>
+  );
+}
+
+function FlightRow({ flight }: { flight: FlightResult }) {
+  const segments = flight.segments ?? [];
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  const airlines = Array.from(new Set(segments.map((s) => s.airline).filter(Boolean))) as string[];
+  const flightNumbers = segments.map((s) => s.flight_number).filter(Boolean).join(" · ");
+  const durations = segments.map((s) => s.duration).filter(Boolean);
+  const stops = typeof flight.stops === "number" ? flight.stops : Math.max(0, segments.length - 1);
+  const cabin = first?.cabin_class;
+  const airlineName = airlines.join(" + ");
+  const airlineSite = airlines.length === 1
+    ? `https://www.${airlines[0].toLowerCase().replace(/[^a-z0-9]/g, "")}.com`
+    : null;
+
+  return (
+    <li className="rounded-surface border bg-card p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-flight-tint" aria-hidden="true">
+            <Plane className="size-4 text-flight-ink" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-foreground">{airlineName || "Airline not provided"}</p>
+            {flightNumbers && <p className="text-meta text-muted-foreground tabular">{flightNumbers}</p>}
+          </div>
+        </div>
+        <div className="text-right">
+          {flight.price ? (
+            <p className="text-xl font-semibold text-foreground tabular">{flight.price}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Price not provided</p>
+          )}
+          {cabin && <p className="text-meta text-muted-foreground">{cabin}</p>}
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <div>
+          <p className="text-meta font-semibold text-muted-foreground tabular">{first?.origin || first?.departure_airport || "?"}</p>
+          <TimeLabel value={first?.departure_time} />
+        </div>
+        <div className="flex flex-col items-center text-center">
+          <span className="text-meta text-muted-foreground tabular">{durations.length === 1 ? durations[0] : durations.join(" + ")}</span>
+          <span className="my-1 h-px w-12 bg-teal-blue sm:w-20" aria-hidden="true" />
+          <Badge variant={stops === 0 ? "flight" : "neutral"}>
+            {stops === 0 ? "Nonstop" : `${stops} stop${stops > 1 ? "s" : ""}`}
+          </Badge>
+        </div>
+        <div className="text-right">
+          <p className="text-meta font-semibold text-muted-foreground tabular">{last?.destination || last?.arrival_airport || "?"}</p>
+          <TimeLabel value={last?.arrival_time} />
+        </div>
+      </div>
+
+      {airlineSite && (
+        <div className="mt-4 flex justify-end border-t pt-3">
+          <a
+            href={airlineSite}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            Book on airline site
+            <ExternalLink aria-hidden="true" />
+            <span className="sr-only">(opens in a new tab)</span>
+          </a>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function ResultsSkeleton() {
+  return (
+    <ul className="space-y-3" aria-hidden="true">
+      {[0, 1, 2].map((i) => (
+        <li key={i} className="rounded-surface border p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="size-9 rounded-full bg-muted animate-breathe" />
+              <span className="h-4 w-32 rounded bg-muted animate-breathe" />
+            </div>
+            <span className="h-5 w-16 rounded bg-muted animate-breathe" />
+          </div>
+          <div className="mt-5 grid grid-cols-3 gap-4">
+            <span className="h-8 rounded bg-muted animate-breathe" />
+            <span className="h-8 rounded bg-muted animate-breathe" />
+            <span className="h-8 rounded bg-muted animate-breathe" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ResultsSection({
+  title,
+  direction,
+  flights,
+  route,
+  date,
+  onEdit,
+}: {
+  title: string;
+  direction: "outbound" | "return";
+  flights: FlightResult[];
+  route: string;
+  date: Date;
+  onEdit: () => void;
+}) {
+  const Icon = direction === "outbound" ? PlaneTakeoff : PlaneLanding;
+  return (
+    <section aria-labelledby={`${direction}-heading`} className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id={`${direction}-heading`} className="flex items-center gap-2 text-title font-semibold">
+          <Icon className="size-5 text-flight-ink" aria-hidden="true" />
+          {title}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {route} · <time dateTime={format(date, "yyyy-MM-dd")}>{format(date, "EEE, MMM d")}</time>
+          {flights.length > 0 && ` · ${flights.length} ${flights.length === 1 ? "option" : "options"}`}
+        </p>
+      </div>
+
+      {flights.length === 0 ? (
+        <Notice
+          tone="info"
+          title={`No flights found for ${route} on ${format(date, "MMM d")}`}
+          description="Try a nearby date, a different airport code for the same city, or a one-way search."
+          actions={<Button variant="outline" size="sm" onClick={onEdit}>Edit search</Button>}
+        />
+      ) : (
+        <ul className="space-y-3">
+          {flights.map((flight, i) => (
+            <FlightRow key={flight.fareSourceCode || i} flight={flight} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+const FlightSearchPage = () => {
+  const formId = useId();
+  const originRef = useRef<HTMLInputElement>(null);
+
+  const [tripType, setTripType] = useState<TripType>("one-way");
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
   const [departureDate, setDepartureDate] = useState<Date | undefined>(addDays(new Date(), 7));
-  const [returnDate, setReturnDate] = useState<Date | undefined>(addDays(new Date(), 14));
-  const [flights, setFlights] = useState<Flight[]>([]);
-  const [returnFlights, setReturnFlights] = useState<Flight[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [fieldErrors, setFieldErrors] = useState<{
-    origin?: string;
-    destination?: string;
-    departureDate?: string;
-    returnDate?: string;
-  }>({});
-  
-  // Swap origin and destination
-  const handleSwapLocations = () => {
-    setOrigin(destination);
-    setDestination(origin);
-  };
-  
-  // Update return date if departure date changes and return date is before it
+  const [returnDate, setReturnDate] = useState<Date | undefined>(undefined);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [state, setState] = useState<SearchState>({ status: "idle" });
+  const [lastSearch, setLastSearch] = useState<SearchSnapshot | null>(null);
+
+  const loading = state.status === "loading";
+
+  // Keep the return date after the departure date.
   useEffect(() => {
-    if (departureDate && returnDate) {
-      if (isBefore(returnDate, departureDate) || isEqual(returnDate, departureDate)) {
-        setReturnDate(addDays(departureDate, 7));
-      }
+    if (departureDate && returnDate && (isBefore(returnDate, departureDate) || isEqual(returnDate, departureDate))) {
+      setReturnDate(addDays(departureDate, 7));
     }
-  }, [departureDate]);
-  
-  // Handle trip type change
+  }, [departureDate, returnDate]);
+
   const handleTripTypeChange = (value: string) => {
-    setTripType(value as 'one-way' | 'round-trip');
-    if (value === 'one-way') {
+    const next = value as TripType;
+    setTripType(next);
+    if (next === "one-way") {
       setReturnDate(undefined);
+      setFieldErrors((e) => ({ ...e, returnDate: undefined }));
     } else if (!returnDate) {
       setReturnDate(departureDate ? addDays(departureDate, 7) : addDays(new Date(), 14));
     }
   };
 
-  const validateForm = () => {
-    const errors: {
-      origin?: string;
-      destination?: string;
-      departureDate?: string;
-      returnDate?: string;
-    } = {};
-    
-    if (!origin.trim()) {
-      errors.origin = 'Origin is required';
-    }
-    
-    if (!destination.trim()) {
-      errors.destination = 'Destination is required';
-    } else if (destination.trim().toUpperCase() === origin.trim().toUpperCase()) {
-      errors.destination = 'Destination must be different from origin';
-    }
-    
-    if (!departureDate) {
-      errors.departureDate = 'Departure date is required';
-    }
-    
-    if (tripType === 'round-trip' && !returnDate) {
-      errors.returnDate = 'Return date is required for round-trip';
-    }
-    
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+  const handleSwap = () => {
+    setOrigin(destination);
+    setDestination(origin);
   };
 
-  const handleSearch = async () => {
-    if (!validateForm()) {
+  const validate = (): FieldErrors => {
+    const errors: FieldErrors = {};
+    if (!origin.trim()) errors.origin = "Enter where you're flying from, like BOS.";
+    if (!destination.trim()) errors.destination = "Enter where you're flying to, like LIS.";
+    else if (destination.trim() === origin.trim()) errors.destination = "Destination must be different from origin.";
+    if (!departureDate) errors.departureDate = "Choose a departure date.";
+    if (tripType === "round-trip" && !returnDate) errors.returnDate = "Choose a return date, or switch to one way.";
+    return errors;
+  };
+
+  const runSearch = async (snapshot: SearchSnapshot) => {
+    setState({ status: "loading" });
+    setLastSearch(snapshot);
+    const query = (from: string, to: string, date: Date) =>
+      axios.get<FlightResult[]>(`${API_BASE_URL}/api/flights/search`, {
+        params: { origin_id: from, destination_id: to, departure_date: format(date, "yyyy-MM-dd") },
+      });
+
+    try {
+      const [out, back] = await Promise.all([
+        query(snapshot.origin, snapshot.destination, snapshot.departureDate),
+        snapshot.tripType === "round-trip" && snapshot.returnDate
+          ? query(snapshot.destination, snapshot.origin, snapshot.returnDate)
+          : Promise.resolve(null),
+      ]);
+      if (!Array.isArray(out.data) || (back && !Array.isArray(back.data))) {
+        setState({ status: "error", message: "The flight search service sent a response we couldn't read." });
+        return;
+      }
+      setState({ status: "done", outbound: out.data, inbound: back ? back.data : null });
+    } catch (err) {
+      console.error("Flight search failed:", err);
+      setState({ status: "error", message: errorMessageFrom(err) });
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      const firstKey = Object.keys(errors)[0];
+      document.getElementById(`${formId}-${firstKey}`)?.focus();
       return;
     }
-    
-    setLoading(true);
-    setError('');
-    setFlights([]);
-    setReturnFlights([]);
-
-    try {
-      const formattedDepartureDate = departureDate ? format(departureDate, 'yyyy-MM-dd') : '';
-      
-      // Fetch outbound flights
-      const flightResponse = await axios.get('http://localhost:8000/api/flights/search', {
-        params: {
-          origin_id: origin.toUpperCase(),
-          destination_id: destination.toUpperCase(),
-          departure_date: formattedDepartureDate,
-        },
-      });
-      
-      // console.log('Outbound flight response:', flightResponse.data);
-      
-      // Check if API returned data properly
-      if (flightResponse.data && Array.isArray(flightResponse.data)) {
-        setFlights(flightResponse.data);
-      } else {
-        // Handle the case where data is not an array
-        console.error('Invalid flight data format:', flightResponse.data);
-        setError('Invalid data format received from the server');
-        // Use fallback data
-        const fallbackFlights = generateMockFlights(origin, destination, departureDate);
-        setFlights(fallbackFlights);
-      }
-      
-      // If round-trip, fetch return flights
-      if (tripType === 'round-trip' && returnDate) {
-        const formattedReturnDate = format(returnDate, 'yyyy-MM-dd');
-        
-        const returnFlightResponse = await axios.get('http://localhost:8000/api/flights/search', {
-          params: {
-            origin_id: destination.toUpperCase(),
-            destination_id: origin.toUpperCase(),
-            departure_date: formattedReturnDate,
-          },
-        });
-        
-        // console.log('Return flight response:', returnFlightResponse.data);
-        
-        // Check if API returned data properly
-        if (returnFlightResponse.data && Array.isArray(returnFlightResponse.data)) {
-          setReturnFlights(returnFlightResponse.data);
-        } else {
-          // Handle the case where data is not an array
-          console.error('Invalid return flight data format:', returnFlightResponse.data);
-          // Use fallback data
-          const fallbackReturnFlights = generateMockFlights(destination, origin, returnDate);
-          setReturnFlights(fallbackReturnFlights);
-        }
-      }
-      
-      // Check if we need to show any errors
-      if (flightResponse.data && Array.isArray(flightResponse.data) && flightResponse.data.length === 0) {
-        setError('No outbound flights found for the selected criteria. Try different dates or destinations.');
-      } else if (tripType === 'round-trip' && returnFlights.length === 0) {
-        setError('No return flights found for the selected criteria. Try different dates.');
-      }
-      
-      setLoading(false);
-    } catch (err: any) {
-      console.error('Error fetching flights:', err);
-      setError(err.response?.data?.detail || 'Failed to fetch flights');
-      
-      // Use fallback mock data if API fails
-      const fallbackFlights = generateMockFlights(origin, destination, departureDate);
-      setFlights(fallbackFlights);
-      
-      if (tripType === 'round-trip' && returnDate) {
-        const fallbackReturnFlights = generateMockFlights(destination, origin, returnDate);
-        setReturnFlights(fallbackReturnFlights);
-      }
-      
-      setLoading(false);
-    }
-  };
-  
-  // Function to generate mock flight data as fallback
-  const generateMockFlights = (from: string, to: string, date: Date | undefined): Flight[] => {
-    const airlines = [
-      "Sky Airways", "Global Airlines", "Delta", "United", 
-      "American Airlines", "JetBlue", "Southwest", "Air France"
-    ];
-    
-    const mockFlights: Flight[] = [];
-    const flightCount = Math.floor(Math.random() * 3) + 2; // 2-4 flights
-    
-    for (let i = 0; i < flightCount; i++) {
-      const departureTime = date ? new Date(date) : new Date();
-      departureTime.setHours(departureTime.getHours() + Math.floor(Math.random() * 24));
-      
-      const durationHours = Math.floor(Math.random() * 10) + 2; // 2-12 hours
-      const durationMinutes = Math.floor(Math.random() * 60);
-      
-      const arrivalTime = new Date(departureTime);
-      arrivalTime.setHours(arrivalTime.getHours() + durationHours);
-      arrivalTime.setMinutes(arrivalTime.getMinutes() + durationMinutes);
-      
-      const price = Math.floor(Math.random() * 800) + 200; // $200-$1000
-      const airline = airlines[Math.floor(Math.random() * airlines.length)];
-      
-      mockFlights.push({
-        flight_id: `FL${Math.floor(Math.random() * 10000)}`,
-        price_raw: price,
-        price_formatted: `$${price}`,
-        origin_id: from,
-        destination_id: to,
-        departure_time: departureTime.toISOString(),
-        arrival_time: arrivalTime.toISOString(),
-        airline_name: airline,
-        flight_number: `${airline.substring(0, 2).toUpperCase()}-${Math.floor(Math.random() * 9000) + 1000}`,
-        load_date: new Date().toISOString(),
-        duration: `${durationHours}h ${durationMinutes}m`
-      });
-    }
-    
-    return mockFlights;
+    void runSearch({
+      tripType,
+      origin: origin.trim(),
+      destination: destination.trim(),
+      departureDate: departureDate!,
+      returnDate: tripType === "round-trip" ? returnDate : undefined,
+    });
   };
 
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      });
-    } catch (error) {
-      return dateString;
-    }
+  const focusForm = () => {
+    originRef.current?.focus();
+    originRef.current?.scrollIntoView({ block: "center" });
   };
+
+  const fieldError = (key: keyof FieldErrors) =>
+    fieldErrors[key] ? (
+      <p id={`${formId}-${key}-error`} className="mt-1.5 text-sm text-destructive">
+        {fieldErrors[key]}
+      </p>
+    ) : null;
+
+  const codeInputProps = (key: "origin" | "destination") => ({
+    id: `${formId}-${key}`,
+    autoCapitalize: "characters" as const,
+    autoComplete: "off",
+    spellCheck: false,
+    maxLength: 40,
+    "aria-invalid": fieldErrors[key] ? true : undefined,
+    "aria-describedby": [`${formId}-${key}-hint`, fieldErrors[key] ? `${formId}-${key}-error` : ""].filter(Boolean).join(" "),
+    disabled: loading,
+  });
 
   return (
-    <Layout showSidebar={true} showHero={false} showFooter={false}>
-      <div className="container mx-auto p-4">
-        <h1 className="text-3xl font-bold mb-6 text-foreground">Find Your Perfect Flight</h1>
+    <div className="mx-auto w-full max-w-4xl px-gutter py-8 md:px-gutter-lg md:py-12">
+      <header className="mb-6 space-y-2">
+        <h1 className="text-3xl font-semibold">Search flights</h1>
+        <p className="max-w-prose text-muted-foreground">
+          Search one way or round trip by airport or city code. Results come straight from our flight data provider.
+        </p>
+      </header>
 
-        <div className="mb-8 p-6 bg-muted rounded-lg shadow-md">
-          {/* Trip Type Selector */}
-          <div className="mb-4">
-            <Tabs defaultValue="one-way" onValueChange={handleTripTypeChange} value={tripType}>
-              <TabsList className="grid w-full max-w-xs grid-cols-2">
-                <TabsTrigger value="one-way">One Way</TabsTrigger>
-                <TabsTrigger value="round-trip">Round Trip</TabsTrigger>
-              </TabsList>
-            </Tabs>
+      <form onSubmit={handleSubmit} noValidate aria-label="Flight search" className="rounded-surface border bg-muted p-4 sm:p-6">
+        <Tabs value={tripType} onValueChange={handleTripTypeChange}>
+          <TabsList className="grid w-full grid-cols-2 sm:w-72" aria-label="Trip type">
+            <TabsTrigger value="one-way">One way</TabsTrigger>
+            <TabsTrigger value="round-trip">Round trip</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <div className="mt-5 grid grid-cols-1 items-start gap-3 md:grid-cols-[1fr_auto_1fr]">
+          <div>
+            <label htmlFor={`${formId}-origin`} className="mb-1.5 block text-sm font-medium">From</label>
+            <Input
+              ref={originRef}
+              value={origin}
+              onChange={(e) => setOrigin(e.target.value.toUpperCase())}
+              placeholder="BOS"
+              {...codeInputProps("origin")}
+            />
+            <p id={`${formId}-origin-hint`} className="sr-only">Airport or city code</p>
+            {fieldError("origin")}
           </div>
-          
-          {/* Origin and Destination */}
-          <div className="relative grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Origin</label>
-              <Input
-                value={origin}
-                onChange={(e) => setOrigin(e.target.value.toUpperCase())}
-                placeholder="e.g., BOS"
-                className={cn("w-full", fieldErrors.origin && "border-destructive focus:ring-destructive")}
-                disabled={loading}
-              />
-              {fieldErrors.origin && <p className="text-xs text-destructive mt-1">{fieldErrors.origin}</p>}
-            </div>
-            
-            {/* Swap Button (for desktop) */}
-            <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
-                      className="rounded-full bg-background shadow-md" 
-                      onClick={handleSwapLocations}
-                      disabled={loading}
-                    >
-                      <ArrowRightLeft className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Swap origin and destination</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Destination</label>
-              <Input
-                value={destination}
-                onChange={(e) => setDestination(e.target.value.toUpperCase())}
-                placeholder="e.g., HYD"
-                className={cn("w-full", fieldErrors.destination && "border-destructive focus:ring-destructive")}
-                disabled={loading}
-              />
-              {fieldErrors.destination && <p className="text-xs text-destructive mt-1">{fieldErrors.destination}</p>}
-            </div>
-            
-            {/* Swap Button (for mobile) */}
-            <div className="md:hidden flex justify-center my-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="flex items-center gap-2" 
-                onClick={handleSwapLocations}
-                disabled={loading}
-              >
-                <ArrowRightLeft className="h-4 w-4" /> Swap
-              </Button>
-            </div>
+
+          <div className="flex justify-center md:pt-7">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={handleSwap}
+              disabled={loading}
+              aria-label="Swap origin and destination"
+              className="rotate-90 rounded-full bg-background md:rotate-0"
+            >
+              <ArrowRightLeft aria-hidden="true" />
+            </Button>
           </div>
-          
-          {/* Date Selection */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
-                Departure Date
-                <Badge variant="outline" className="ml-2 font-normal">Required</Badge>
-              </label>
-              <InlineDatePicker
-                date={departureDate}
-                setDate={(date) => {
-                  if (date) {
-                    setDepartureDate(date);
-                    toast.success("Departure date updated to " + format(date, 'MMM d, yyyy'));
-                  }
-                }}
-                placeholder="Select departure date"
-                minDate={new Date()}
-                disabled={loading}
-                className={fieldErrors.departureDate ? "border-destructive focus:ring-destructive" : ""}
-              />
-              {fieldErrors.departureDate && <p className="text-xs text-destructive mt-1">{fieldErrors.departureDate}</p>}
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
-                Return Date
-                {tripType === "round-trip" ? (
-                  <Badge variant="outline" className="ml-2 font-normal">Required</Badge>
-                ) : (
-                  <Badge variant="outline" className="ml-2 font-normal">Optional</Badge>
-                )}
-              </label>
-              <InlineDatePicker
-                date={returnDate}
-                setDate={(date) => {
-                  if (date) {
-                    setReturnDate(date);
-                    toast.success("Return date updated to " + format(date, 'MMM d, yyyy'));
-                  }
-                }}
-                placeholder="Select return date"
-                minDate={departureDate ? addDays(departureDate, 0) : new Date()}
-                disabled={loading || tripType === "one-way"}
-                className={fieldErrors.returnDate ? "border-destructive focus:ring-destructive" : ""}
-              />
-              {fieldErrors.returnDate && <p className="text-xs text-destructive mt-1">{fieldErrors.returnDate}</p>}
-            </div>
+
+          <div>
+            <label htmlFor={`${formId}-destination`} className="mb-1.5 block text-sm font-medium">To</label>
+            <Input
+              value={destination}
+              onChange={(e) => setDestination(e.target.value.toUpperCase())}
+              placeholder="LIS"
+              {...codeInputProps("destination")}
+            />
+            <p id={`${formId}-destination-hint`} className="sr-only">Airport or city code</p>
+            {fieldError("destination")}
           </div>
-          
-          <Button
-            onClick={handleSearch}
-            disabled={loading}
-            className="mt-6 bg-primary text-primary-foreground hover:bg-primary/90 w-full md:w-auto"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Searching Flights...
-              </>
-            ) : (
-              <>
-                <Plane className="mr-2 h-4 w-4" /> Search Flights
-              </>
-            )}
-          </Button>
         </div>
 
-        {error && <div className="rounded-md bg-destructive/10 p-3 text-destructive mb-6">{error}</div>}
-
-        {loading ? (
-          <div className="flex flex-col justify-center items-center p-12">
-            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">Searching for the best flight deals...</p>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <span id={`${formId}-departureDate-label`} className="mb-1.5 block text-sm font-medium">Departure date</span>
+            <div id={`${formId}-departureDate`} tabIndex={-1} aria-labelledby={`${formId}-departureDate-label`} className="rounded-control">
+              <InlineDatePicker
+                date={departureDate}
+                setDate={(date) => date && setDepartureDate(date)}
+                placeholder="Choose a date"
+                minDate={new Date()}
+                disabled={loading}
+                className={cn("bg-background", fieldErrors.departureDate && "border-destructive")}
+              />
+            </div>
+            {fieldError("departureDate")}
           </div>
-        ) : (
-          <div className="space-y-8">
-            {/* Outbound Flights */}
-            {flights.length > 0 && (
-              <div>
-                <div className="flex items-center gap-3 mb-4">
-                  <Badge variant="outline" className="bg-primary/10 text-primary">
-                    Outbound
-                  </Badge>
-                  <h2 className="text-2xl font-semibold text-foreground">
-                    {origin} to {destination} · {flights.length} {flights.length === 1 ? 'flight' : 'flights'}
-                  </h2>
-                </div>
-                <div className="grid grid-cols-1 gap-6">
-                  {flights.map((flight) => (
-                    <Card key={flight.flight_id} className="overflow-hidden hover:shadow-md transition-all">
-                      <CardHeader className="bg-primary/5 pb-2">
-                        <CardTitle className="flex justify-between items-center">
-                          <div className="flex items-center">
-                            <Plane className="mr-2 h-5 w-5 text-primary" /> 
-                            {flight.airline_name} - {flight.flight_number}
-                          </div>
-                          <div className="text-lg font-bold text-primary">{flight.price_formatted}</div>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="pt-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <p className="font-semibold mb-1">Departure</p>
-                            <p className="text-muted-foreground">
-                              {formatDate(flight.departure_time)}
-                            </p>
-                            <p className="text-muted-foreground">{flight.origin_id}</p>
-                          </div>
-                          <div>
-                            <p className="font-semibold mb-1">Arrival</p>
-                            <p className="text-muted-foreground">
-                              {formatDate(flight.arrival_time)}
-                            </p>
-                            <p className="text-muted-foreground">{flight.destination_id}</p>
-                          </div>
-                        </div>
-                        <div className="mt-4 flex justify-between items-center">
-                          <div>
-                            <p className="font-semibold">Duration: {flight.duration}</p>
-                          </div>
-                          <Button 
-                            className="bg-primary text-primary-foreground hover:bg-primary/90"
-                            onClick={() => window.open(`https://www.${flight.airline_name.toLowerCase().replace(/\s+/g, '')}.com`, '_blank')}
-                          >
-                            Select
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {/* Return Flights */}
-            {tripType === 'round-trip' && returnFlights.length > 0 && (
-              <div>
-                <div className="flex items-center gap-3 mb-4">
-                  <Badge variant="outline" className="bg-amber-500/10 text-amber-600">
-                    Return
-                  </Badge>
-                  <h2 className="text-2xl font-semibold text-foreground">
-                    {destination} to {origin} · {returnFlights.length} {returnFlights.length === 1 ? 'flight' : 'flights'}
-                  </h2>
-                </div>
-                <div className="grid grid-cols-1 gap-6">
-                  {returnFlights.map((flight) => (
-                    <Card key={flight.flight_id} className="overflow-hidden hover:shadow-md transition-all">
-                      <CardHeader className="bg-amber-500/5 pb-2">
-                        <CardTitle className="flex justify-between items-center">
-                          <div className="flex items-center">
-                            <Plane className="mr-2 h-5 w-5 text-amber-600" /> 
-                            {flight.airline_name} - {flight.flight_number}
-                          </div>
-                          <div className="text-lg font-bold text-amber-600">{flight.price_formatted}</div>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="pt-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <p className="font-semibold mb-1">Departure</p>
-                            <p className="text-muted-foreground">
-                              {formatDate(flight.departure_time)}
-                            </p>
-                            <p className="text-muted-foreground">{flight.origin_id}</p>
-                          </div>
-                          <div>
-                            <p className="font-semibold mb-1">Arrival</p>
-                            <p className="text-muted-foreground">
-                              {formatDate(flight.arrival_time)}
-                            </p>
-                            <p className="text-muted-foreground">{flight.destination_id}</p>
-                          </div>
-                        </div>
-                        <div className="mt-4 flex justify-between items-center">
-                          <div>
-                            <p className="font-semibold">Duration: {flight.duration}</p>
-                          </div>
-                          <Button 
-                            variant="outline"
-                            className="border-amber-500 text-amber-600 hover:bg-amber-500/10"
-                            onClick={() => window.open(`https://www.${flight.airline_name.toLowerCase().replace(/\s+/g, '')}.com`, '_blank')}
-                          >
-                            Select
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {/* No flights found message */}
-            {!loading && flights.length === 0 && !error && (
-              <div className="text-center py-12">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
-                  <Plane className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="text-xl font-medium mb-2">Ready to search for flights</h3>
-                <p className="text-muted-foreground">
-                  Enter your travel details above and click 'Search Flights' to find the best flight deals.
-                </p>
-              </div>
+
+          <div>
+            <span id={`${formId}-returnDate-label`} className="mb-1.5 block text-sm font-medium">
+              Return date {tripType === "one-way" && <span className="font-normal text-muted-foreground">(round trip only)</span>}
+            </span>
+            <div id={`${formId}-returnDate`} tabIndex={-1} aria-labelledby={`${formId}-returnDate-label`} className="rounded-control">
+              <InlineDatePicker
+                date={returnDate}
+                setDate={(date) => date && setReturnDate(date)}
+                placeholder={tripType === "one-way" ? "Not needed for one way" : "Choose a date"}
+                minDate={departureDate ?? new Date()}
+                disabled={loading || tripType === "one-way"}
+                className={cn("bg-background", fieldErrors.returnDate && "border-destructive")}
+              />
+            </div>
+            {fieldError("returnDate")}
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <Button type="submit" size="lg" disabled={loading} className="w-full sm:w-auto">
+            <Search aria-hidden="true" />
+            {loading ? "Searching…" : "Search flights"}
+          </Button>
+        </div>
+      </form>
+
+      <div className="mt-8" aria-live="polite" aria-busy={loading}>
+        {state.status === "idle" && (
+          <EmptyState
+            icon={Plane}
+            title="Where are you flying?"
+            description="Enter airport or city codes and a date to see available flights."
+          />
+        )}
+
+        {state.status === "loading" && (
+          <div>
+            <p className="mb-3 text-sm text-muted-foreground" role="status">
+              Searching flights{lastSearch ? ` from ${lastSearch.origin} to ${lastSearch.destination}` : ""}. This can take a few seconds.
+            </p>
+            <ResultsSkeleton />
+          </div>
+        )}
+
+        {state.status === "error" && (
+          <Notice
+            tone="error"
+            title="We couldn't load flights"
+            description={state.message}
+            actions={
+              <>
+                <Button size="sm" onClick={() => lastSearch && runSearch(lastSearch)} disabled={!lastSearch}>
+                  Try again
+                </Button>
+                <Button size="sm" variant="outline" onClick={focusForm}>Edit search</Button>
+              </>
+            }
+          />
+        )}
+
+        {state.status === "done" && lastSearch && (
+          <div className="space-y-10">
+            <ResultsSection
+              title="Outbound"
+              direction="outbound"
+              flights={state.outbound}
+              route={`${lastSearch.origin} → ${lastSearch.destination}`}
+              date={lastSearch.departureDate}
+              onEdit={focusForm}
+            />
+            {state.inbound && lastSearch.returnDate && (
+              <ResultsSection
+                title="Return"
+                direction="return"
+                flights={state.inbound}
+                route={`${lastSearch.destination} → ${lastSearch.origin}`}
+                date={lastSearch.returnDate}
+                onEdit={focusForm}
+              />
             )}
           </div>
         )}
       </div>
-    </Layout>
+    </div>
   );
 };
 

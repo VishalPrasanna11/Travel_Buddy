@@ -9,11 +9,14 @@ interface MapComponentProps {
     lat: number;
     lng: number;
     title?: string;
+    address?: string;
     type?: 'primary' | 'secondary' | 'reference';
   }>;
   height?: string;
   width?: string;
   onMapClick?: (location: { lat: number; lng: number }) => void;
+  /** Title of the marker to highlight (opens its info bubble) after focusing. */
+  focusTitle?: string;
 }
 
 let optionsSet = false;
@@ -27,9 +30,20 @@ function makePinSvg(fill: string, size: number) {
   `)}`;
 }
 
+const WORLD = { lat: 20, lng: 0 };
+// Keeps pins clear of the header and the "Places on the map" panel.
+const FIT_PADDING = { top: 72, right: 56, bottom: 48, left: 48 };
+const MAX_FIT_ZOOM = 16;
+
+/**
+ * Google map with brand pins. Framing has one owner: when the marker set
+ * changes the map fits all pins (padding for overlays, capped zoom); when a
+ * `center` is passed (a place picked from the list) it pans there at `zoom`.
+ */
 export default function MapComponent({
-  center = { lat: 40.7128, lng: -74.006 },
-  zoom = 10,
+  center,
+  zoom = 17,
+  focusTitle,
   markers = [],
   height = "100%",
   width = "100%",
@@ -38,9 +52,12 @@ export default function MapComponent({
   const mapRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
-  const [mapMarkers, setMapMarkers] = useState<google.maps.Marker[]>([]);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const infoRef = useRef<google.maps.InfoWindow | null>(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const stableMarkers = useMemo(() => markers, [JSON.stringify(markers)]);
-  const stableCenter = useMemo(() => center, [center.lat, center.lng]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableCenter = useMemo(() => center, [center?.lat, center?.lng]);
 
   useEffect(() => {
     const initializeMap = async () => {
@@ -63,8 +80,8 @@ export default function MapComponent({
         await importLibrary("places");
 
         const map = new Map(mapRef.current, {
-          center,
-          zoom,
+          center: WORLD,
+          zoom: 2,
           mapTypeControl: true,
           streetViewControl: true,
           fullscreenControl: true,
@@ -96,22 +113,21 @@ export default function MapComponent({
   useEffect(() => {
     if (!mapInstance) return;
 
-    mapMarkers.forEach((marker) => marker.setMap(null));
-
     const iconConfig: Record<string, { fill: string; size: number }> = {
-      primary: { fill: "black", size: 36 },
-      secondary: { fill: "#4B5563", size: 30 },
-      reference: { fill: "#9CA3AF", size: 24 },
+      primary: { fill: "#AA4465", size: 36 } /* attractions: raspberry */,
+      secondary: { fill: "#F5A65B", size: 30 } /* hotels: amber */,
+      reference: { fill: "#374151", size: 28 } /* restaurants: ink */,
     };
 
-    const newMarkers = stableMarkers.map((markerData) => {
-      const cfg = iconConfig[markerData.type || "primary"] || iconConfig.primary;
+    infoRef.current ??= new google.maps.InfoWindow();
+    const info = infoRef.current;
 
+    const created = stableMarkers.map((markerData) => {
+      const cfg = iconConfig[markerData.type || "primary"] || iconConfig.primary;
       const marker = new google.maps.Marker({
         position: { lat: markerData.lat, lng: markerData.lng },
         map: mapInstance,
         title: markerData.title || "Location",
-        animation: google.maps.Animation.DROP,
         icon: {
           url: makePinSvg(cfg.fill, cfg.size),
           scaledSize: new google.maps.Size(cfg.size, cfg.size),
@@ -119,44 +135,61 @@ export default function MapComponent({
         },
       });
 
-      const infoWindow = new google.maps.InfoWindow({
-        content: `
-          <div style="padding: 8px; max-width: 200px;">
-            <h3 style="font-weight: bold; margin-bottom: 4px;">${markerData.title || "Location"}</h3>
-            <p style="font-size: 12px; margin: 0;">
-              Lat: ${markerData.lat.toFixed(4)}, Lng: ${markerData.lng.toFixed(4)}
-            </p>
-          </div>
-        `,
-      });
-
       marker.addListener("click", () => {
-        infoWindow.open(mapInstance, marker);
+        // Build with DOM nodes, never HTML strings: names come from an API.
+        const box = document.createElement("div");
+        box.style.cssText = "padding:4px 2px;max-width:220px;font:14px/1.4 'Atkinson Hyperlegible Next',system-ui,sans-serif;color:#374151";
+        const title = document.createElement("strong");
+        title.textContent = markerData.title || "Location";
+        box.appendChild(title);
+        if (markerData.address) {
+          const addr = document.createElement("div");
+          addr.style.cssText = "font-size:13px;color:#5B6472;margin-top:2px";
+          addr.textContent = markerData.address;
+          box.appendChild(addr);
+        }
+        info.setContent(box);
+        info.open({ map: mapInstance, anchor: marker });
       });
-
       return marker;
     });
+    markersRef.current = created;
 
-    setMapMarkers(newMarkers);
-
-    if (newMarkers.length > 0) {
+    if (created.length === 1) {
+      mapInstance.setCenter({ lat: stableMarkers[0].lat, lng: stableMarkers[0].lng });
+      mapInstance.setZoom(15);
+    } else if (created.length > 1) {
       const bounds = new google.maps.LatLngBounds();
       stableMarkers.forEach((m) => bounds.extend({ lat: m.lat, lng: m.lng }));
-      mapInstance.fitBounds(bounds);
-
-      google.maps.event.addListenerOnce(mapInstance, "bounds_changed", () => {
-        const currentZoom = mapInstance?.getZoom() ?? 0;
-        if (currentZoom > 15) mapInstance.setZoom(15);
+      mapInstance.fitBounds(bounds, FIT_PADDING);
+      google.maps.event.addListenerOnce(mapInstance, "idle", () => {
+        if ((mapInstance.getZoom() ?? 0) > MAX_FIT_ZOOM) mapInstance.setZoom(MAX_FIT_ZOOM);
       });
+    } else {
+      mapInstance.setCenter(WORLD);
+      mapInstance.setZoom(2);
     }
+
+    // Remove exactly the markers this run created (safe under StrictMode).
+    return () => {
+      info.close();
+      created.forEach((m) => {
+        google.maps.event.clearInstanceListeners(m);
+        m.setMap(null);
+      });
+    };
   }, [mapInstance, stableMarkers]);
 
+  // A place picked from the list: pan to it close enough to separate
+  // neighbouring pins.
   useEffect(() => {
     if (mapInstance && stableCenter) {
-      mapInstance.setCenter(stableCenter);
+      mapInstance.panTo(stableCenter);
       mapInstance.setZoom(zoom);
+      const target = focusTitle ? markersRef.current.find((m) => m.getTitle() === focusTitle) : undefined;
+      if (target) google.maps.event.trigger(target, "click");
     }
-  }, [mapInstance, stableCenter, zoom]);
+  }, [mapInstance, stableCenter, zoom, focusTitle]);
 
   return (
     <div className="relative w-full h-full">

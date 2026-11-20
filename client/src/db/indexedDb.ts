@@ -1,11 +1,17 @@
-import { type Message } from '@/components/ui/chat-message';
+import type { ChatMessage } from '@/components/chat/types';
+
+/** Fired on window whenever a conversation is saved, renamed or deleted. */
+export const CONVERSATIONS_CHANGED = 'travelbuddy:conversations-changed';
+const notifyChanged = () => window.dispatchEvent(new Event(CONVERSATIONS_CHANGED));
 
 export interface Conversation {
   id: string;
   title: string;
   created_at: number;
   updated_at: number;
-  messages: Message[];
+  messages: ChatMessage[];
+  /** True once the user renamed it; auto-titling stops. */
+  customTitle?: boolean;
 }
 
 export class ChatDatabase {
@@ -39,7 +45,7 @@ export class ChatDatabase {
     });
   }
 
-  async saveConversation(conversation: Conversation): Promise<string> {
+  async saveConversation(conversation: Conversation, { touch = true }: { touch?: boolean } = {}): Promise<string> {
     if (!this.db) await this.init();
     
     return new Promise((resolve, reject) => {
@@ -47,12 +53,13 @@ export class ChatDatabase {
       const store = transaction.objectStore(this.STORE_NAME);
       
       // Update the timestamp before saving
-      conversation.updated_at = Date.now();
+      if (touch) conversation.updated_at = Date.now();
       
       const request = store.put(conversation);
       
       request.onsuccess = () => {
         resolve(conversation.id);
+        notifyChanged();
       };
       
       request.onerror = (event) => {
@@ -120,6 +127,7 @@ export class ChatDatabase {
       
       request.onsuccess = () => {
         resolve(true);
+        notifyChanged();
       };
       
       request.onerror = (event) => {
@@ -127,6 +135,12 @@ export class ChatDatabase {
         reject(event);
       };
     });
+  }
+
+  async renameConversation(id: string, title: string): Promise<void> {
+    const existing = await this.getConversation(id);
+    if (!existing) return;
+    await this.saveConversation({ ...existing, title, customTitle: true }, { touch: false });
   }
 }
 
