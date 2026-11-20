@@ -2,7 +2,6 @@
 sky/
 rain/
 .env/
-.env.example
 venv/
 
 # Byte-compiled / optimized / DLL files

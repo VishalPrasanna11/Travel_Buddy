@@ -90,7 +90,7 @@ const Footer = () => {
                 <div className="mt-10 flex flex-col gap-4 border-t pt-6 md:flex-row md:items-center md:justify-between">
                     <span className="text-sm text-muted-foreground">&copy; {new Date().getFullYear()} TravelBuddy</span>
                     <a
-                        href="https://github.com/DAMG7245/Travel_Buddy"
+                        href="https://github.com/VishalPrasanna11/Travel_Buddy"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"

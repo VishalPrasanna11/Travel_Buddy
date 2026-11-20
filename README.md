@@ -1,378 +1,207 @@
-#  TravelBuddy – AI-Powered Travel Planning Assistant
+# TravelBuddy: AI trip planner
 
-[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.68.0+-00a393.svg)](https://fastapi.tiangolo.com/)
-[![React.js](https://img.shields.io/badge/-ReactJs-61DAFB?logo=react&logoColor=white&style=for-the-badge)
-[![Docker](https://img.shields.io/badge/Docker-20.10.8+-blue.svg)](https://www.docker.com/)
-[![LLM Agents](https://img.shields.io/badge/Agents-CrewAI%20%2B%20LLMs-purple.svg)](https://github.com/joaomdmoura/crewAI)
-[![Vector DB](https://img.shields.io/badge/Vector%20Search-Pinecone-009adf.svg)](https://www.pinecone.io/)
-[![Data Warehouse](https://img.shields.io/badge/Data%20Analytics-Snowflake-29b5e8.svg)](https://www.snowflake.com/)
-[![OpenAI](https://img.shields.io/badge/LLM-OpenAI-blueviolet.svg)](https://openai.com/)
+[![Live](https://img.shields.io/badge/live-travelbuddy.live-AA4465.svg)](https://travelbuddy.live)
+[![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-SSE-00a393.svg)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev/)
+[![LangGraph](https://img.shields.io/badge/agents-LangGraph-6CAE75.svg)](https://langchain-ai.github.io/langgraph/)
+[![OpenAI](https://img.shields.io/badge/LLM-GPT--4o-412991.svg)](https://openai.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Documentation](https://img.shields.io/badge/docs-Codelabs-blue.svg)](https://codelabs-preview.appspot.com/?file_id=1kMzJ_qRJrDknPFatF1raPvsoJUatl_-tfJuICo7p4EM#0)
 
-**TravelBuddy** is a next-gen AI travel planner that creates fully personalized travel itineraries through natural language conversations. Built using a modular, multi-agent architecture, semantic search, and real-time travel APIs, it offers a unified, intelligent travel planning experience.
+Describe a trip in a sentence. TravelBuddy searches live flights, hotels, rental cars, places,
+restaurants and weather, streams back an answer as each search finishes, and builds a day-by-day
+plan you can put on a map, add to your calendar, download as a PDF or share.
 
-## Project URLs
-- Code Labs: [Codelabs Documentation](https://codelabs-preview.appspot.com/?file_id=1tutswOpFN6G73kNlOOBUUXkxT-XiGBHQ0f_FO67wKHs#0)
-- Application: [Front End]()
-- Swagger: [Swagger](http://34.45.163.161:8000/docs)
-- Airflow: [Airflow](http://159.89.95.178:8080/home)
-- Github Tasks: [GitHub Issues and Tasks](https://github.com/DAMG7245/Travel_Buddy/issues?q=is%3Aissue%20state%3Aclosed&page=1)
----
-
-##  Key Features
-
--  **Multi-Agent Architecture** – Dedicated AI agents for flights, hotels, weather, events, safety, and itinerary creation.
--  **Semantic Search** – Enables personalized travel recommendations based on user intent.
--  **Real-Time Integrations** – Connects with leading travel APIs like OpenWeather, Amadeus, Booking.com, Google Places, and more.
--  **Snowflake Analytics** – Stores and visualizes trends in travel data, such as flight pricing, weather patterns.
--  **Auto-Generated Itineraries** – End-to-end travel plans, exportable as PDFs(coming soon).
+- **App:** https://travelbuddy.live
+- **API docs (Swagger):** https://travelbuddy.live/docs
+- **Source:** https://github.com/VishalPrasanna11/Travel_Buddy
+- **Issues:** https://github.com/VishalPrasanna11/Travel_Buddy/issues
 
 ---
-##  Project Overview
 
-###  User Interaction Flow
-1. Start a conversation with TravelBuddy.
-2. Describe your travel preferences or ask for suggestions.
-3. Backend routes the request to specialized agents.
-4. Agents fetch and analyze flights, weather, hotels, etc.
-5. The itinerary agent assembles a plan.
-6. Receive a full itinerary with options to adjust/export.
+## Features
 
-##  Core Features
+- **One conversation, whole trip.** "4 days in Lisbon from Boston, March 12–15, 2 adults" runs every search it needs in parallel and streams progress ("Flights ✓ 10 found · Hotels: searching…").
+- **Real data only.** Flights, hotels and cars come from RouteStack, places and restaurants from Google Places (with photos and attribution), weather from OpenWeather. Prices are never invented; missing data is shown as missing.
+- **Asks when it should.** Missing dates, origin or an ambiguous place ("which Portland?") get a quick question with tappable answers, then the plan continues.
+- **Day-by-day itinerary.** Morning, afternoon and evening slots linked to real results, with "Day 2 on map", calendar export (.ics), PDF download and read-only share links.
+- **Booking hand-off.** Book buttons open the provider's checkout for the exact flight, room or car.
+- **Your account.** Trips sync across devices (Auth0 sign-in), with saved places, preferences (currency, units, home airport, travelers) and thumbs-up/down feedback.
+- **Stays on topic.** Non-travel requests get a friendly redirect instead of an answer.
 
-### 1. Multi-Agent Architecture
-- Specialized AI agents (weather, flights, hotel, events, itinerary)
-- Root agent dynamically coordinates all sub-agents
+## How it works
 
-### 2. Semantic Search & Personalization
-- Intent understanding via Pinecone vector embeddings
-- Personalized recommendations based on interests
+```mermaid
+flowchart LR
+    U[Message] --> I[Intake<br/>GPT-4o: intent, place, dates, travelers]
+    I -->|not travel| S[Scope reply]
+    I -->|missing info| C[Clarify<br/>pause, ask, resume]
+    C --> P
+    I --> P[Plan sections]
+    P --> D[Destination]
+    P --> F[Flights]
+    P --> H[Hotels]
+    P --> R[Cars]
+    P --> A[Attractions]
+    P --> E[Restaurants]
+    P --> W[Weather]
+    D & F & H & R & A & E & W --> M[Compose<br/>streamed answer + itinerary + follow-ups]
+    M --> O[final event]
+```
 
-### 3. Real-Time Integrations
-- Connected to OpenWeather, Amadeus, TripAdvisor, Eventbrite, and more
+The agent is a LangGraph `StateGraph` ([`server/agents/travel_graph.py`](server/agents/travel_graph.py)).
+`POST /api/llm/ask` streams Server-Sent Events: `meta`, `agent` (per-search progress), `plan`,
+`section` (each result set as soon as it's ready), `delta` (answer tokens), `clarification`,
+`final` and typed `error`s. Clarifying questions use LangGraph `interrupt()` and resume with the
+traveler's answers.
 
-### 4. Intelligent Itinerary Generation
-- Unified output from all agents
-- Travel plan delivered as JSON or PDF
+## Tech stack
 
-### 5. Travel Analytics
-- Hotel pricing trends, weather forecasts, attraction popularity
-- Powered by Snowflake dashboards
+| Layer | Tools |
+|---|---|
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, shadcn/ui, TanStack Query, Google Maps JS API, Auth0 |
+| Backend | Python 3.11, FastAPI, LangGraph + LangChain OpenAI (GPT-4o), SQLAlchemy, PostgreSQL, fpdf2, Brotli |
+| Data providers | RouteStack (flights, hotels, cars, checkout), Google Places (New), OpenWeather (One Call 3.0, free 5-day fallback) |
+| Hosting | Heroku (Docker, `heroku.yml`), Heroku Postgres, custom domain with automatic TLS |
 
----
-## Methodology
+## Repository layout
 
-### Data Gathering
-- APIs: OpenWeather, Amadeus, Booking, TripAdvisor
-- Normalized and validated upon ingestion
+```text
+Travel_Buddy/
+├── client/                 React app (Vite)
+│   └── src/
+│       ├── api/            API clients (SSE ask, conversations, account)
+│       ├── components/     chat/ (cards, itinerary, follow-ups), map, sidebar, ui/
+│       ├── hooks/          useChat + the SSE stream reducer
+│       ├── pages/          home, chat, saved, settings, shared trip
+│       └── global.css      design tokens (theme colours, type, motion)
+├── server/                 FastAPI app
+│   ├── agents/             LangGraph pipeline, SSE runner, test fixtures
+│   ├── routes/             /api/* endpoints
+│   ├── tools/              RouteStack, Google Places, OpenWeather clients
+│   ├── schemas/            typed entities (Flight, Hotel, Place, WeatherDay…) and API models
+│   ├── models/             SQLAlchemy tables (created on startup)
+│   └── middlewares/        auth (Auth0 JWT), errors, request ids, rate limits
+├── evals/                  AI eval plan, 38 test cases and the harness
+├── docs/                   API upgrade plan and UI makeover notes
+├── Dockerfile, heroku.yml  production image (client build + server)
+└── docker-compose.yaml     local stack (server, client, Postgres)
+```
 
-### Agentic Execution
-- rootAgent receives task
-- Delegates to:
-  - planning_agent (hotels, restaurants, flights)
-  - explore_agent (places)
-  - weather_agent (forecast)
-  - itinerary_agent (final assembly)
+## Run it locally
 
-### Itinerary Assembly
-- Aggregates outputs
-- Routes to itinerary_agent
-- Final JSON returned or exported as PDF
+### Prerequisites
 
-### Challenges
+- Python 3.11, Node.js 22 and npm
+- PostgreSQL (or `docker compose up postgres`)
+- Keys: OpenAI, Google Maps / Places, RouteStack, OpenWeather; an Auth0 application and API
 
-- Travel planning is fragmented across platforms
-- Lack of semantic search and true personalization
-- Manual itinerary creation is time-consuming
-- Contextual factors like weather or advisories are not integrated
-
-### Opportunities
-
-- Natural language understanding for preferences
-- Vector embeddings for intent-based recommendations
-- Unified travel experience in one platform
-- Learn from user feedback to improve over time
-
----
-##  Data Pipeline
-
-1. **User Query Ingestion** – Requests originate from client-side React frontend and are routed through FastAPI endpoints.
-2. **Intent Parsing & Agent Dispatch** – rootAgent interprets user intent and activates relevant sub-agents (weather, explore, planning).
-3. **Real-Time API Retrieval** – Each sub-agent calls external APIs (OpenWeather, Amadeus, Booking, etc.) for live travel data.
-4. **Data Transformation** – Responses are normalized and structured by internal parsers and tool modules (`tools/*.py`).
-5. **Analytics Integration** – Cleaned data is logged to Snowflake for trend analysis, pricing models, and user insights.
-6. **Itinerary Compilation** – itinerary_agent consolidates outputs into a cohesive, step-wise travel plan.
-7. **Response Delivery** – Final results returned via API/UI as structured JSON .
-
----   
-##  Microservices & APIs
-
-| Service              | Purpose                              | Example Endpoint                          |
-|----------------------|---------------------------------------|-------------------------------------------|
-| Weather              | Forecasts & historical trends         | `/api/weather/forecast/{location}`        |
-| Flight Search        | Flight offers and pricing             | `/api/flights/search`                     |
-| Hotel Booking        | Accommodation matching                | `/api/hotels/search`                      |
-| Attractions & Tours  | POI recommendations                   | `/api/attractions/recommended`           |
-| Event Discovery      | Local events during travel            | `/api/events/search/{location}`           |
-| Safety Advisory      | Risk alerts and travel warnings       | `/api/safety/advisory/{country}`          |
-| Itinerary Generator  | Full trip plan generation             | `/api/itinerary/generate`                 |
-
-
-
-
-##  Technology Stack
-
-### Backend
-- ![Python](https://img.shields.io/badge/Python-FFD43B?style=flat&logo=python&logoColor=blue)
-- ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)
-- ![JWT](https://img.shields.io/badge/JWT-black?style=flat&logo=JSON%20web%20tokens)
-- ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat&logo=postgresql&logoColor=white)
-
-### Frontend
-- ![Next.js](https://img.shields.io/badge/Next.js-black?style=flat&logo=next.js&logoColor=white)
-- ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat&logo=tailwind-css&logoColor=white)
-- ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-gray?style=flat&logo=vercel&logoColor=white)
-
-
-### AI/ML
-- ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white)
-- LangGraph
-
-
-### Cloud & DevOps
-- ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)
-- ![Docker](https://img.shields.io/badge/Docker-2CA5E0?style=flat&logo=docker&logoColor=white)
-- ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat&logo=github-actions&logoColor=white)
-- ![Apache Airflow](https://img.shields.io/badge/Apache_Airflow-017CEE?style=flat&logo=Apache%20Airflow&logoColor=white)
-
-- ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi&logoColor=white)
-- ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white)
-- ![Pinecone](https://img.shields.io/badge/Pinecone-009adf?style=flat&logo=pinecone&logoColor=white)
-- ![Snowflake](https://img.shields.io/badge/Snowflake-29b5e8?style=flat&logo=snowflake&logoColor=white)
-- ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white)
-- ![Groq](https://img.shields.io/badge/Groq%20LLaMA3-ff4b4b?style=flat&logo=groq&logoColor=white)
-- ![Amadeus](https://img.shields.io/badge/Amadeus_API-0071C5?style=flat&logo=airfrance&logoColor=white)
-- ![OpenWeather](https://img.shields.io/badge/OpenWeather-FF7E00?style=flat&logo=OpenWeatherMap&logoColor=white)
-
-
-# Travel_Buddy Setup Guide
-
-## Prerequisites
-
-1. **Python 3.8+**
-   - Python 3.8 or newer
-   - Verify with: `python --version` or `python3 --version`
-
-2. **Node.js and npm**
-   - Node.js 16+ and npm 8+ recommended
-   - Verify with: `node --version` and `npm --version`
-
-3. **API Keys**
-   - OpenAI API key
-   - OpenWeather API key
-   - Google Maps API key
-   - Google Places API key
-   - Amadeus API credentials (client ID and secret)
-
-4. **Database**
-   - PostgreSQL database
-   - Snowflake account for analytics
-
-5. **Docker and Docker Compose** (optional)
-   - For containerized deployment
-
-## Setup Steps
-
-### 1. Clone the Repository
+### 1. Clone and configure
 
 ```bash
-git clone https://github.com/yourusername/Travel_Buddy.git
+git clone https://github.com/VishalPrasanna11/Travel_Buddy.git
 cd Travel_Buddy
-```
-
-### 2. Set Up Environment Variables
-
-1. Copy the sample .env file:
-```bash
 cp .env.example .env
+cp client/.env.example client/.env
 ```
 
-2. Edit the `.env` file with your credentials:
-```
-# PostgreSQL Database Configuration
-DB_HOST=your-postgres-host
-DB_PORT=your-postgres-port
-DB_NAME=travelbuddy
-DB_USER=your-username
-DB_PASSWORD=your-password
-DB_SSL_MODE=require
+Fill in both files. The server reads `.env` (database, Auth0, OpenAI, Google, RouteStack,
+OpenWeather). The client reads `client/.env` (Auth0 app, Google Maps key, and `VITE_BASE_URL`
+pointing at the local server, e.g. `http://localhost:8000`).
 
-# Auth0 Configuration
-AUTH0_DOMAIN=your-auth0-domain
-AUTH0_AUDIENCE=your-auth0-audience
+### 2. Start the server
 
-# API Keys
-OPENAI_API_KEY=your-openai-api-key
-OPENWEATHER_API_KEY=your-openweather-api-key
-GOOGLE_MAPS_API_KEY=your-google-maps-api-key
-GOOGLE_PLACES_API_KEY=your-google-places-api-key
-AMADEUS_CLIENT_ID=your-amadeus-client-id
-AMADEUS_CLIENT_SECRET=your-amadeus-client-secret
-
-# Snowflake Configuration
-SNOWFLAKE_USER=your-snowflake-user
-SNOWFLAKE_PASSWORD=your-snowflake-password
-SNOWFLAKE_ACCOUNT=your-snowflake-account
-SNOWFLAKE_WAREHOUSE=your-snowflake-warehouse
-SNOWFLAKE_DATABASE=your-snowflake-database
-SNOWFLAKE_SCHEMA=your-snowflake-schema
-
-# Other settings
-FRONTEND_URL=http://localhost:3000
-PORT=8000
-```
-
-### 3. Set Up Backend
-
-1. Create a Python virtual environment:
-```bash
-python -m venv myenv
-```
-
-2. Activate the virtual environment:
-   - Windows: `myenv\Scripts\activate`
-   - macOS/Linux: `source myenv/bin/activate`
-
-3. Install backend dependencies:
 ```bash
 cd server
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cd ../flight_service
-pip install -r requirements.txt
-cd ..
+uvicorn main:app --reload --port 8000
 ```
 
-### 4. Set Up Frontend
+Tables are created on startup. Swagger is at http://localhost:8000/docs.
+
+### 3. Start the client
 
 ```bash
 cd client
-npm install
-cd ..
-```
-
-### 5. Start the Services
-
-**Option 1: Individual services (development)**
-
-1. Start the backend server:
-```bash
-cd server
-python main.py
-```
-
-2. Start the flight service (new terminal):
-```bash
-cd flight_service
-python -m app.main
-```
-
-3. Start the frontend (new terminal):
-```bash
-cd client
+npm install --legacy-peer-deps
 npm run dev
 ```
 
-**Option 2: Docker Compose**
+Open http://localhost:3000. Add `http://localhost:3000` to your Auth0 application's Allowed
+Callback URLs, Logout URLs and Web Origins.
+
+### Without API keys
+
+Fixture mode serves realistic canned results so you can work on the UI offline:
 
 ```bash
-docker-compose up
+cd server
+TRAVELBUDDY_FIXTURES=1 ALLOW_ANONYMOUS_ASK=1 uvicorn main:app --port 8000
 ```
 
-### 6. Access the Application
+### With Docker
 
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- Flight Service API: http://localhost:8001
+```bash
+docker compose up --build
 ```
-Project Structure
 
-Travel_Buddy/
-├── client/                     # Frontend React application
-│   ├── src/                    # React source code
-│   │   ├── components/         # UI components
-│   │   │   ├── ChatComponent.tsx  # Main chat interface
-│   │   │   ├── MapComponent.tsx   # Map visualization
-│   │   │   └── WeatherDisplay.tsx # Weather display
-│   │   ├── pages/              # Application pages
-│   │   └── api/                # API integration
-│   ├── package.json            # Frontend dependencies
-│   └── .env                    # Frontend environment variables
-│
-├── server/                     # Main backend server
-│   ├── agents/                 # AI agent system
-│   │   ├── rootAgent.py        # Main agent coordinator
-│   │   └── prompt.py           # Agent prompts
-│   ├── subagents/              # Specialized AI agents
-│   │   ├── explore/            # Exploration agent
-│   │   ├── planning/           # Planning agent
-│   │   └── pre_travel/         # Pre-travel agent
-│   ├── tools/                  # External API integrations
-│   │   ├── weather_tool.py     # Weather data integration
-│   │   ├── flight_search.py    # Flight search tool
-│   │   └── hotel_search.py     # Hotel search tool
-│   ├── main.py                 # Main server entry point
-│   └── requirements.txt        # Backend dependencies
-│
-├── flight_service/             # Flight microservice
-│   ├── app/                    # Flight service code
-│   │   ├── main.py             # Flight service entry point
-│   │   ├── api/                # Flight API endpoints
-│   │   └── services/           # Flight data services
-│   └── requirements.txt        # Flight service dependencies
-│
-├── weekly-weather-mcp-master/  # Model Context Protocol for weather
-│   ├── simplified_mcp_server.py # MCP server implementation
-│   └── weather_agent.py        # Weather agent implementation
-│
-├── .gitignore                  # Git ignored files
-├── .env                        # Project environment variables
-├── docker-compose.yaml         # Docker configuration
-└── README.md                   # Project documentation
+## API overview
+
+All JSON errors look like `{"error": {"code", "message", "retryable", "request_id"}}`; every response carries `X-Request-ID`.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/llm/ask` | Ask TravelBuddy (SSE stream); `resume` answers a clarification |
+| `DELETE /api/llm/ask/{request_id}` | Stop an answer in flight |
+| `GET/PATCH/DELETE /api/conversations[/{id}]` | Trip history (signed in) |
+| `POST /api/book/{entity_id}` | Checkout link for a flight, hotel or car |
+| `GET /api/places/photo/{ref}`, `GET /api/places/{place_id}` | Photo proxy, place details |
+| `GET /api/trips/{id}/export?format=ics\|pdf` | Download the itinerary |
+| `GET /api/trips/{id}/share`, `GET /api/shared/{token}` | Create / read a public share link |
+| `GET/PATCH /api/users/preferences` | Locale, currency, units, home airport, travelers |
+| `GET/POST/DELETE /api/saved-places` | Saved places, restaurants and hotels |
+| `POST /api/feedback` | Thumbs up/down on an answer |
+| `GET /api/health` | Health and version |
+
+Full schemas: https://travelbuddy.live/docs (OpenAPI at `/openapi.json`).
+
+## Testing the AI
+
+[`evals/`](evals/README.md) holds the eval plan: 38 prompts across full plans, single requests,
+clarifications, scope, multi-turn follow-ups, robustness and grounding, scored by deterministic
+checks (stream contract, slots, sections, prices that must exist in the results) and an optional
+GPT-4o judge.
+
+```bash
+# contract checks against a fixture-mode server
+python evals/run_evals.py --base-url http://localhost:8000 --fixtures
+# full suite against a live server, with the judge
+python evals/run_evals.py --base-url http://localhost:8000 --judge
 ```
-##  Notes
 
-1. **Weather MCP Server**
-   - Weather tool uses the Model Context Protocol (MCP) server
-   - Verify the MCP server path in `server/tools/weather_tool.py`
-   - Adjust path based on your setup
+## Deployment
 
-2. **Database Setup**
-   - Server creates tables automatically on startup
-   - Verify database credentials in the .env file
+Pushes to `main` deploy to Heroku from [`heroku.yml`](heroku.yml): the Docker build compiles the
+client, then serves it from FastAPI alongside the API. Config vars on the Heroku app:
+`DATABASE_URL`, `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `FRONTEND_URL`, `OPENAI_API_KEY`,
+`GOOGLE_API_KEY`, `GOOGLE_MAPS_API_KEY`, `ROUTESTACK_*`, `OPENWEATHER_API_KEY`.
+The client calls the API on its own origin, so the app works on `travelbuddy.live`,
+`www.travelbuddy.live` and the Heroku URL alike.
 
-3. **Auth0 Setup**
-   - Configure settings in Auth0 dashboard
-   - Update Auth0 configuration in .env and frontend code
+## More docs
 
-4. **Troubleshooting**
-   - API key errors: Verify all keys in .env
-   - Database issues: Check database is running and accessible
-   - MCP server issues: Verify path and API keys (OpenWeather and OpenAI)
+- [DESIGN.md](DESIGN.md): design system (colours, type, motion)
+- [PRODUCT.md](PRODUCT.md): product principles
+- [docs/api-upgrade-plan.html](docs/api-upgrade-plan.html): the five-phase API upgrade
+- [docs/ui-makeover/](docs/ui-makeover/final-report.md): UI makeover findings and report
 
-## 👥 Contributors
+## Contributors
 
 - Sai Priya Veerabomma
 - Sai Srunith Silvery
 - Vishal Prasanna
 
----
+## License
 
-## 📜 License
-
-MIT License – Feel free to fork, extend, and build upon TravelBuddy.
-
----
-
+MIT. See [LICENSE](LICENSE).

@@ -30,7 +30,7 @@ jobs:
             sudo apt update
             cd ~/Travel_Buddy
             git config --local credential.helper store
-            echo 'https://${{ secrets.GH_PAT_TOKEN }}@github.com/DAMG7245/Travel_Buddy.git' > ~/.git-credentials
+            echo 'https://${{ secrets.GH_PAT_TOKEN }}@github.com/VishalPrasanna11/Travel_Buddy.git' > ~/.git-credentials
             git pull
             
             # Server deployment
