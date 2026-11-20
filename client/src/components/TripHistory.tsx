@@ -4,6 +4,7 @@ import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 
 import { chatDb, CONVERSATIONS_CHANGED, type Conversation } from "@/db/indexedDb";
+import { conversationsApi, useApiToken } from "@/api/ConversationsApi";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -11,29 +12,56 @@ import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogClose } from "@/components/ui/dialog";
 
-type Summary = Pick<Conversation, "id" | "title" | "updated_at"> & { turns: number };
+type Summary = Pick<Conversation, "id" | "title" | "updated_at"> & { turns: number; synced?: boolean };
 
+/**
+ * Trips from this device (IndexedDB) merged with the signed-in user's
+ * server-side conversations, so history follows them across devices and
+ * page reloads. Server titles (LLM-generated) win unless renamed locally.
+ */
 function useConversations() {
+  const getToken = useApiToken();
   const [items, setItems] = useState<Summary[] | null>(null);
   const load = useCallback(async () => {
+    let local: Summary[] = [];
     try {
       const all = await chatDb.getAllConversations();
-      setItems(
-        all
-          .filter((c) => c.messages?.some((m) => m.role === "user"))
-          .map((c) => ({ id: c.id, title: c.title, updated_at: c.updated_at, turns: c.messages.length }))
-      );
+      local = all
+        .filter((c) => c.messages?.some((m) => m.role === "user"))
+        .map((c) => ({ id: c.id, title: c.title, updated_at: c.updated_at, turns: c.messages.length, custom: c.customTitle } as Summary & { custom?: boolean }));
     } catch (err) {
       console.error("Could not list trips", err);
-      setItems([]);
     }
-  }, []);
+    setItems((prev) => prev ?? local);
+    let remote: Summary[] = [];
+    try {
+      const token = await getToken();
+      if (token) {
+        const res = await conversationsApi.list(token);
+        remote = res.items
+          .filter((c) => (c.message_count ?? 0) > 0)
+          .map((c) => ({ id: c.id, title: c.title, updated_at: Date.parse(c.updated_at) || 0, turns: c.message_count ?? 0, synced: true }));
+      }
+    } catch {
+      /* offline or signed out: local list only */
+    }
+    const byId = new Map<string, Summary>();
+    for (const c of local) byId.set(c.id, c);
+    for (const r of remote) {
+      const l = byId.get(r.id) as (Summary & { custom?: boolean }) | undefined;
+      byId.set(r.id, l ? { ...l, synced: true, title: l.custom ? l.title : r.title, updated_at: Math.max(l.updated_at, r.updated_at) } : r);
+    }
+    setItems([...byId.values()].sort((a, b) => b.updated_at - a.updated_at));
+  }, [getToken]);
   useEffect(() => {
     load();
-    window.addEventListener(CONVERSATIONS_CHANGED, load);
-    return () => window.removeEventListener(CONVERSATIONS_CHANGED, load);
+    let t: ReturnType<typeof setTimeout> | undefined;
+    // Saves fire often while a trip is active; refresh at most every 1.5s.
+    const onChange = () => { clearTimeout(t); t = setTimeout(load, 1500); };
+    window.addEventListener(CONVERSATIONS_CHANGED, onChange);
+    return () => { clearTimeout(t); window.removeEventListener(CONVERSATIONS_CHANGED, onChange); };
   }, [load]);
-  return items;
+  return { items, reload: load };
 }
 
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
@@ -46,7 +74,8 @@ function when(ts: number) {
 
 /** Saved trips (IndexedDB, this device only) with rename and delete. */
 export function TripHistory() {
-  const items = useConversations();
+  const { items, reload } = useConversations();
+  const getToken = useApiToken();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -63,22 +92,34 @@ export function TripHistory() {
     (trigger ?? document.getElementById("trip-history-heading"))?.focus();
   };
 
-  const activeId = pathname.startsWith("/chat/") ? pathname.slice(6) : null;
+  const activeId = pathname.startsWith("/chat/") ? pathname.slice(6) : pathname.startsWith("/dev/chat/") ? pathname.slice(10) : null;
   const close = () => isMobile && setOpenMobile(false);
 
   const confirmDelete = async () => {
     if (!deleting) return;
     const wasActive = deleting.id === activeId;
     await chatDb.deleteConversation(deleting.id);
+    if (deleting.synced) {
+      const token = await getToken();
+      await conversationsApi.remove(deleting.id, token).catch((err) => console.error("Could not delete on server", err));
+    }
     setDeleting(null);
+    void reload();
     if (wasActive) navigate(`/chat/${uuidv4()}`, { replace: true });
   };
 
   const saveRename = async (e: React.FormEvent) => {
     e.preventDefault();
     const title = draft.trim();
-    if (renaming && title) await chatDb.renameConversation(renaming.id, title.slice(0, 80));
+    if (renaming && title) {
+      await chatDb.renameConversation(renaming.id, title.slice(0, 80));
+      if (renaming.synced) {
+        const token = await getToken();
+        await conversationsApi.rename(renaming.id, title.slice(0, 80), token).catch((err) => console.error("Could not rename on server", err));
+      }
+    }
     setRenaming(null);
+    void reload();
   };
 
   return (
@@ -93,7 +134,7 @@ export function TripHistory() {
         </div>
       ) : items.length === 0 ? (
         <p className="px-4 py-2 text-sm text-muted-foreground">
-          No trips yet. Conversations you start are saved on this device.
+          No trips yet. Conversations you start are saved here and, when you're signed in, synced to your account.
         </p>
       ) : (
         <ul className="scroll-thin min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
@@ -156,7 +197,7 @@ export function TripHistory() {
         <DialogContent role="alertdialog" onCloseAutoFocus={(e) => returnFocus(e, lastTrigger.current)}>
           <DialogTitle>Delete this trip?</DialogTitle>
           <DialogDescription>
-            "{deleting?.title}" and its answers will be removed from this device. This can't be undone.
+            "{deleting?.title}" and its answers will be removed{deleting?.synced ? " from your account and this device" : " from this device"}. This can't be undone.
           </DialogDescription>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Keep it</Button></DialogClose>

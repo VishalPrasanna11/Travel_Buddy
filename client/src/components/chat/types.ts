@@ -71,6 +71,10 @@ export type FlightSegment = {
   duration?: string
   cabin_class?: string
   layover_minutes?: number
+  fare_family?: string
+  checked_baggage?: string
+  cabin_baggage?: string
+  seats_left?: number
 }
 
 export type Flight = Entity & {
@@ -83,7 +87,11 @@ export type Flight = Entity & {
   duration_minutes?: number
   duration?: string
   stops?: number
+  return_stops?: number
+  return_duration_minutes?: number
   cabin_class?: string
+  fare_family?: string
+  bookable?: boolean
   segments?: FlightSegment[]
   return_segments?: FlightSegment[]
   price?: Price
@@ -112,6 +120,11 @@ export type Hotel = Entity & {
   cancellation_policy?: string
   refundable?: boolean
   provider?: string
+  chain?: string
+  distance_km?: number
+  free_breakfast?: boolean
+  pay_at_hotel?: boolean
+  bookable?: boolean
   booking_url?: string
 }
 
@@ -129,6 +142,7 @@ export type CarRental = Entity & {
   pickup_at?: string
   dropoff_at?: string
   price?: Price
+  bookable?: boolean
   booking_url?: string
 }
 
@@ -275,6 +289,8 @@ export type ChatMessage = {
   /** Streaming progress, per agent. */
   progress?: AgentProgressMap
   requestId?: string
+  /** Server message id (for feedback); set once the turn is saved. */
+  serverId?: string
 }
 
 // -------------------------------------------------------------- readers

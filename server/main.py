@@ -14,6 +14,8 @@ from routes.geocodeRoute import router as geocode_router
 from routes.chatRoute import router as chat_router
 from routes.flightRoute import router as flight_router
 from routes.placesRoute import router as places_router
+from routes.bookingRoute import router as booking_router
+from routes.conversationRoute import router as conversation_router
 from middlewares.errors import RequestIdMiddleware, install_error_handlers
 
 logging.basicConfig(
@@ -28,6 +30,14 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app):
     logger.info("Starting up the application...")
+    try:
+        # Create new app tables (conversations, feedback, …) if they don't exist yet.
+        from middlewares.conn_database import engine
+        from models.appModels import AppBase
+        AppBase.metadata.create_all(bind=engine)
+        logger.info("App tables ready")
+    except Exception as e:
+        logger.warning(f"Could not create app tables (DB unavailable?): {e}")
     try:
         from tools.routestack_auth import get_token
         get_token()
@@ -72,6 +82,8 @@ app.include_router(geocode_router, prefix="/api/maps", tags=["maps"])
 app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(flight_router, prefix="/api/flights", tags=["flights"])
 app.include_router(places_router, prefix="/api/places", tags=["places"])
+app.include_router(booking_router, prefix="/api/book", tags=["booking"])
+app.include_router(conversation_router, prefix="/api/conversations", tags=["conversations"])
 
 
 @app.get("/api/health", tags=["root"])

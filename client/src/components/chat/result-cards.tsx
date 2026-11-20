@@ -2,9 +2,9 @@ import { useId, useState } from "react"
 import { AlertTriangle, BedDouble, Clock, ExternalLink, Globe, Landmark, MapPin, Plane, Star, Utensils } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { Badge } from "@/components/ui/badge"
 import { Notice } from "@/components/ui/notice"
-import { attractionsOf, flightsOf, hotelsOf, photoSrc, restaurantsOf, type Flight, type Photo, type Hotel, type Place, type Price, type ResponseData, type SectionKey, type SectionStatus } from "./types"
+import { FlightCard, HotelCard } from "./travel-cards"
+import { attractionsOf, flightsOf, hotelsOf, photoSrc, restaurantsOf, type Photo, type Place, type ResponseData, type SectionKey, type SectionStatus } from "./types"
 
 /**
  * Structured results that came back with an answer. Everything shown here is
@@ -17,16 +17,6 @@ function mapsUrl(p: Place) {
   if (p.google_maps_uri) return p.google_maps_uri
   const q = [p.name, p.address].filter(Boolean).join(", ")
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}${p.place_id ? `&query_place_id=${p.place_id}` : ""}`
-}
-
-export function fmtPrice(p?: Price, opts: { amount?: number } = {}) {
-  if (!p) return null
-  const value = opts.amount ?? p.amount
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency || "USD", maximumFractionDigits: value >= 100 ? 0 : 2 }).format(value)
-  } catch {
-    return `${p.currency} ${value}`
-  }
 }
 
 const PRICE_LABEL = ["Free", "$", "$$", "$$$", "$$$$"]
@@ -194,67 +184,33 @@ function PlaceSection({ title, places, icon }: { title: string; places: Place[];
   )
 }
 
-function fmtTime(iso?: string) {
-  if (!iso) return null
+/** "Prices as of 9:12" freshness note. */
+function asOf(iso?: string) {
+  if (!iso) return undefined
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return (
-    <time dateTime={iso}>
-      {d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-    </time>
-  )
+  if (Number.isNaN(d.getTime())) return undefined
+  return `Prices as of ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`
 }
 
-function fmtDuration(iso?: string) {
-  if (!iso) return null
-  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?$/.exec(iso)
-  return m ? `${m[1] ? `${m[1]}h ` : ""}${m[2] ? `${m[2]}m` : ""}`.trim() : iso
-}
-
-function FlightRow({ f }: { f: Flight }) {
-  const price = fmtPrice(f.price)
-  const segs = f.segments ?? []
-  const number = segs.map((s) => s.flight_number).filter(Boolean).join(" · ")
+function ExpandableList<T>({ items, initial, render }: { items: T[]; initial: number; render: (item: T, i: number) => React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false)
+  const listId = useId()
+  const shown = expanded ? items : items.slice(0, initial)
   return (
-    <li className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 rounded-xl border bg-card p-3 sm:grid-cols-[minmax(8rem,1fr)_2fr_auto] sm:items-center">
-      <div className="flex min-w-0 items-center gap-2">
-        <Plane className="size-4 shrink-0 text-flight-ink" aria-hidden="true" />
-        <span className="truncate font-semibold">{f.carrier_name || f.carrier || "Flight"}</span>
-        {number && <span className="text-meta text-muted-foreground">{number}</span>}
-      </div>
-      {price && <div className="text-right font-semibold tabular sm:order-last">{price}</div>}
-      <div className="col-span-2 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground tabular sm:col-span-1">
-        <span><span className="font-medium text-ink">{f.origin}</span> {fmtTime(f.departure_at)}</span>
-        <span aria-hidden="true">→</span>
-        <span className="sr-only">to</span>
-        <span><span className="font-medium text-ink">{f.destination}</span> {fmtTime(f.arrival_at)}</span>
-        {(f.duration || f.duration_minutes) && (
-          <span className="inline-flex items-center gap-1"><Clock className="size-3.5" aria-hidden="true" />{fmtDuration(f.duration) ?? `${Math.floor(f.duration_minutes! / 60)}h ${f.duration_minutes! % 60}m`}</span>
-        )}
-        <span>{f.stops ? `${f.stops} stop${f.stops > 1 ? "s" : ""}` : "Nonstop"}</span>
-        {f.cabin_class && <Badge variant="flight" className="capitalize">{f.cabin_class.toLowerCase()}</Badge>}
-      </div>
-    </li>
-  )
-}
-
-function HotelRow({ h }: { h: Hotel }) {
-  const price = fmtPrice(h.price)
-  return (
-    <li className="flex items-start gap-3 rounded-xl border bg-card p-3">
-      <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-stay-tint">
-        <BedDouble className="size-4 text-stay-ink" aria-hidden="true" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold leading-snug [overflow-wrap:anywhere]">{h.name}</p>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-meta text-muted-foreground">
-          {h.star_rating != null && <span className="tabular">{h.star_rating}-star hotel</span>}
-          {h.guest_rating != null && <span className="tabular">Guests {h.guest_rating}</span>}
-          {h.address && <span>{h.address}</span>}
-        </div>
-      </div>
-      {price && <div className="text-right font-semibold tabular">{price}<span className="block text-meta font-normal text-muted-foreground">total</span></div>}
-    </li>
+    <>
+      <ul id={listId} className="space-y-3">{shown.map(render)}</ul>
+      {items.length > initial && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls={listId}
+          className="mt-3 inline-flex min-h-10 items-center rounded-md px-3 text-sm font-medium text-raspberry hover:bg-accent pointer-coarse:min-h-11"
+        >
+          {expanded ? "Show fewer" : `Show all ${items.length}`}
+        </button>
+      )}
+    </>
   )
 }
 
@@ -298,13 +254,13 @@ export function ResultCards({ data }: { data?: ResponseData }) {
   return (
     <div className={cn("max-w-3xl")}>
       {flights.length > 0 && (
-        <Section title="Flights" icon={Plane} count={flights.length}>
-          <ul className="space-y-2">{flights.slice(0, 8).map((f, i) => <FlightRow key={f.id ?? i} f={f} />)}</ul>
+        <Section title="Flights" icon={Plane} count={flights.length} note={asOf(flights[0]?.price?.as_of ?? flights[0]?.fetched_at)}>
+          <ExpandableList items={flights} initial={3} render={(f, i) => <FlightCard key={f.id ?? i} f={f} />} />
         </Section>
       )}
       {hotels.length > 0 && (
-        <Section title="Hotels" icon={BedDouble} count={hotels.length}>
-          <ul className="space-y-2">{hotels.slice(0, 8).map((h, i) => <HotelRow key={h.id ?? i} h={h} />)}</ul>
+        <Section title="Hotels" icon={BedDouble} count={hotels.length} note={asOf(hotels[0]?.price?.as_of ?? hotels[0]?.fetched_at)}>
+          <ExpandableList items={hotels} initial={3} render={(h, i) => <HotelCard key={h.id ?? i} h={h} />} />
         </Section>
       )}
       <PlaceSection title="Places to see" places={attractions} icon={Landmark} />

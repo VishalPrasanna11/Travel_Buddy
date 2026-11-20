@@ -105,6 +105,10 @@ class FlightSegment(BaseModel):
     cabin_class: Optional[str] = None
     layover_minutes: Optional[int] = None  # wait after this segment, before the next
     aircraft: Optional[str] = None
+    fare_family: Optional[str] = None
+    checked_baggage: Optional[str] = None
+    cabin_baggage: Optional[str] = None
+    seats_left: Optional[int] = None
 
 
 class Baggage(BaseModel):
@@ -123,7 +127,11 @@ class Flight(EntityBase):
     duration_minutes: Optional[int] = None
     duration: Optional[str] = None
     stops: int = 0
+    return_stops: Optional[int] = None
+    return_duration_minutes: Optional[int] = None
     cabin_class: Optional[str] = None
+    fare_family: Optional[str] = None
+    bookable: bool = False
     segments: List[FlightSegment] = Field(default_factory=list)
     return_segments: List[FlightSegment] = Field(default_factory=list)
     price: Optional[Price] = None
@@ -156,6 +164,11 @@ class Hotel(EntityBase):
     refundable: Optional[bool] = None
     provider: Optional[str] = None
     hotel_id: Optional[str] = None
+    pay_at_hotel: Optional[bool] = None
+    free_breakfast: Optional[bool] = None
+    chain: Optional[str] = None
+    distance_km: Optional[float] = None
+    bookable: bool = False
     booking_url: Optional[str] = None
 
 

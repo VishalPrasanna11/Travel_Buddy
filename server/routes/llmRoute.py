@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from controllers.llmController import LLMController, Message
 from middlewares.conn_llm import get_openai_client
 from middlewares.conn_database import get_db
@@ -12,6 +12,11 @@ import json
 import logging
 import os
 from middlewares.auth import Identity, optional_identity, resolve_email
+from middlewares.errors import ask_limiter, error_response, request_id_of
+from schemas.api import AskRequest
+from agents.rootAgent import root_agent
+from agents import stream_runner
+from routes.conversationRoute import persist_turn
 
 router = APIRouter()
 
@@ -66,11 +71,6 @@ async def ask_question(
 
 
 # ---------------------------------------------------------------- streaming
-from fastapi import Header  # noqa: E402
-from schemas.api import AskRequest, new_request_id  # noqa: E402
-from agents.rootAgent import root_agent  # noqa: E402
-from agents import stream_runner  # noqa: E402
-from middlewares.errors import ask_limiter, error_response, request_id_of  # noqa: E402
 
 SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
@@ -113,10 +113,25 @@ async def ask_stream(payload: AskRequest, request: Request, ident: Optional[Iden
     events = root_agent.astream({"input": payload.query, "history": history}, request_id=request_id)
 
     async def on_final(ev):
-        return {"conversation_id": payload.conversation_id}
+        saved = await persist_turn(ident, payload.conversation_id, payload.query, ev, request_id)
+        return {"conversation_id": payload.conversation_id, **saved}
 
     return StreamingResponse(
         stream_runner.stream_request(request_id, events, owner=ident.sub if ident else None, on_final=on_final),
         media_type="text/event-stream",
         headers={**SSE_HEADERS, "X-Request-ID": request_id},
     )
+
+
+@router.delete("/ask/{request_id}")
+async def cancel_ask(request_id: str, request: Request, ident: Optional[Identity] = Depends(optional_identity)):
+    """Stop an answer in flight (cancels its asyncio task)."""
+    rid = request_id_of(request)
+    entry = stream_runner.running_task(request_id)
+    if not entry:
+        return error_response(404, "That request isn't running.", rid, code="NOT_RUNNING")
+    owner = entry.get("owner")
+    if owner and (not ident or ident.sub != owner):
+        return error_response(403, "You can only stop your own requests.", rid)
+    stream_runner.cancel(request_id)
+    return {"request_id": request_id, "status": "cancelled"}

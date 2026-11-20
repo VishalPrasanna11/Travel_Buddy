@@ -49,6 +49,7 @@ export function applyStreamEvent(msg: ChatMessage, ev: StreamEvent): ChatMessage
         content: ev.data.answer || msg.content,
         data: data ? { ...msg.data, ...data } : msg.data,
         requestId: ev.data.request_id || msg.requestId,
+        serverId: (ev.data as { message_id?: string }).message_id || msg.serverId,
       };
     }
     default:

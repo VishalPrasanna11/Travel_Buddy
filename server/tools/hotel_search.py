@@ -1,9 +1,13 @@
 from langchain_core.tools import tool
 from typing import Dict, Any
 import logging
+import re
 import httpx
 from tools.routestack_auth import headers, BASE_URL
-from schemas.entities import Hotel, Photo, Price, make_id, now_iso, to_float
+from schemas.entities import Hotel, LatLng, Photo, Price, make_id, now_iso, to_float
+from tools import offer_cache
+from datetime import datetime
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger("hotel_search")
 
@@ -41,29 +45,137 @@ def _search_destination(city: str) -> Dict[str, Any]:
     return pick
 
 
+AMENITY_CODES = [
+    ("WIFI", ("wifi", "wi-fi", "internet")),
+    ("POOL", ("pool",)),
+    ("SPA", ("spa", "sauna", "massage")),
+    ("GYM", ("fitness", "gym")),
+    ("PARKING", ("parking",)),
+    ("BREAKFAST", ("breakfast",)),
+    ("RESTAURANT", ("restaurant",)),
+    ("BAR", ("bar", "lounge")),
+    ("AIR_CONDITIONING", ("air condition",)),
+    ("AIRPORT_SHUTTLE", ("airport shuttle", "airport transfer")),
+    ("PETS_ALLOWED", ("pet",)),
+    ("ACCESSIBLE", ("wheelchair", "accessible")),
+    ("LAUNDRY", ("laundry", "dry cleaning")),
+    ("KITCHEN", ("kitchen",)),
+    ("ROOM_SERVICE", ("room service",)),
+    ("BUSINESS_CENTER", ("business center", "business centre", "meeting", "conference")),
+    ("FRONT_DESK_24H", ("24-hour front desk", "24-hour reception")),
+]
+
+
+def amenity_codes(names: List[str]) -> List[str]:
+    """Typed amenity codes from the provider's free-text facility names."""
+    out: List[str] = []
+    text = " | ".join(n.lower() for n in names)
+    for code, needles in AMENITY_CODES:
+        if any(re.search(rf"\b{re.escape(n)}(?:s|es)?\b", text) for n in needles):
+            out.append(code)
+    return out
+
+
+def _nights(check_in: str, check_out: str) -> Optional[int]:
+    try:
+        d0 = datetime.strptime(check_in, "%Y-%m-%d").date()
+        d1 = datetime.strptime(check_out, "%Y-%m-%d").date()
+        return max((d1 - d0).days, 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _address(h: Dict[str, Any]) -> Optional[str]:
+    if isinstance(h.get("address"), str) and h["address"].strip():
+        return h["address"].strip()
+    a = ((h.get("contact") or {}).get("address")) or {}
+    if not isinstance(a, dict):
+        return None
+    parts = [a.get("line1"), a.get("line2"), (a.get("city") or {}).get("name"), (a.get("country") or {}).get("name")]
+    return ", ".join(p for p in parts if p) or None
+
+
+def _coords(h: Dict[str, Any]) -> Optional[LatLng]:
+    for key in ("geoCode", "geocode", "coordinates", "location"):
+        c = h.get(key)
+        if isinstance(c, dict):
+            lat = c.get("lat") or c.get("latitude")
+            lng = c.get("long") or c.get("lng") or c.get("lon") or c.get("longitude")
+            if lat is not None and lng is not None:
+                return LatLng(lat=float(lat), lng=float(lng))
+    geo = ((h.get("contact") or {}).get("geoLocation")) or {}
+    if geo.get("lat") is not None and (geo.get("long") or geo.get("lng")) is not None:
+        return LatLng(lat=float(geo["lat"]), lng=float(geo.get("long") or geo.get("lng")))
+    return None
+
+
+def _cancellation(options: Dict[str, Any]) -> Tuple[Optional[str], Optional[bool]]:
+    if not options:
+        return None, None
+    if options.get("freeCancellation"):
+        return "Free cancellation (see the provider's terms for the deadline).", True
+    if options.get("refundable") is True:
+        return "Refundable rate; cancellation fees may apply.", True
+    if options.get("refundable") is False:
+        return "Non-refundable rate.", False
+    return None, None
+
+
 def normalize_hotel(h: Dict[str, Any], currency: str, check_in: str, check_out: str, fetched_at: str) -> Hotel:
-    photos = []
-    for p in (h.get("images") or h.get("photos") or [])[:8]:
+    photos: List[Photo] = []
+    seen = set()
+    candidates = [h.get("heroImage")] + list(h.get("images") or h.get("photos") or [])
+    for p in candidates:
         url = p if isinstance(p, str) else (p.get("url") if isinstance(p, dict) else None)
-        if url:
+        if url and url not in seen:
+            seen.add(url)
             photos.append(Photo(url=url))
+        if len(photos) >= 8:
+            break
     facilities = h.get("facilities") or []
     names = [f.get("name", "") for f in facilities if isinstance(f, dict) and f.get("name")]
+    names += [m for m in (h.get("mainamenity") or []) if isinstance(m, str)]
+    options = h.get("options") or {}
+    if options.get("freeBreakfast"):
+        names.append("Free breakfast")
+    nights = _nights(check_in, check_out)
+    total = to_float(h.get("ourprice") or h.get("baseprice"))
+    price = nightly = None
+    if total:
+        price = Price(amount=total, currency=currency, basis="total", total=total,
+                      published=to_float(h.get("publishedRate")), saving=to_float(h.get("saving")), as_of=fetched_at)
+        if nights:
+            nightly = Price(amount=round(total / nights, 2), currency=currency, basis="per_night", total=total, as_of=fetched_at)
+    cancel_text, refundable = _cancellation(options)
+    reviews = h.get("reviews") or {}
     return Hotel(
         id=make_id("ht", h.get("id"), h.get("name")),
         fetched_at=fetched_at,
         name=h.get("name", ""),
-        address=h.get("address") or None,
+        address=_address(h),
+        location=_coords(h),
         star_rating=to_float(h.get("starRating")),
-        guest_rating=to_float(h.get("guestRating") or h.get("reviewScore")),
-        price=Price.maybe(h.get("ourprice", h.get("baseprice")), currency, basis="total", as_of=fetched_at,
-                          published=to_float(h.get("publishedRate")), saving=to_float(h.get("saving"))),
+        guest_rating=to_float(h.get("guestRating") or h.get("reviewScore") or (reviews.get("rating") if isinstance(reviews, dict) else None)),
+        review_count=(reviews.get("count") if isinstance(reviews, dict) else None),
+        price=price,
+        nightly_price=nightly,
+        nights=nights,
         check_in=check_in,
         check_out=check_out,
-        amenity_names=names[:20],
+        check_in_time=h.get("checkInTime") or None,
+        check_out_time=h.get("checkOutTime") or None,
+        amenities=amenity_codes(names),
+        amenity_names=list(dict.fromkeys(n for n in names if n))[:24],
         photos=photos,
+        cancellation_policy=cancel_text,
+        refundable=refundable,
+        pay_at_hotel=h.get("payAtHotel"),
+        free_breakfast=options.get("freeBreakfast"),
+        chain=h.get("chain") or None,
+        distance_km=to_float(h.get("distancekm")),
         hotel_id=str(h.get("id", "")) or None,
         provider=h.get("providerName") or None,
+        bookable=bool(h.get("id")),
     )
 
 
@@ -73,6 +185,7 @@ def _search_hotels(params: Dict[str, str]) -> Dict[str, Any]:
     check_out = params.get("checkOutDate", "")
     adults = int(params.get("adults", "2"))
     rooms = int(params.get("rooms", "1"))
+    currency_pref = params.get("currency")
 
     if not city:
         return {"error": "Missing required parameter: city"}
@@ -98,6 +211,8 @@ def _search_hotels(params: Dict[str, str]) -> Dict[str, Any]:
             "lat": lat,
             "long": lng,
         }
+        if currency_pref:
+            search_body["currency"] = currency_pref
 
         resp = httpx.post(
             f"{BASE_URL}/mcp/hotel/search-hotels",
@@ -117,11 +232,24 @@ def _search_hotels(params: Dict[str, str]) -> Dict[str, Any]:
 
         raw_hotels = result.get("result") or []
         fetched_at = now_iso()
-        hotels = [
-            normalize_hotel(h, currency, check_in, check_out, fetched_at).model_dump(mode="json", exclude_none=True)
-            for h in raw_hotels[:10]
-            if isinstance(h, dict)
-        ]
+        hotels = []
+        for h in raw_hotels[:10]:
+            if not isinstance(h, dict):
+                continue
+            hotel = normalize_hotel(h, currency, check_in, check_out, fetched_at)
+            offer_cache.put(hotel.id, "hotel", {
+                "hotelId": str(h.get("id", "")),
+                "hotelName": h.get("name", ""),
+                "token": token,
+                "correlationId": correlation_id,
+                "checkIn": check_in,
+                "checkOut": check_out,
+                "rooms": [{"adults": adults, "children": 0, "childAges": []} for _ in range(rooms)],
+                "roomCount": rooms,
+                "destinationId": dest_id,
+                "publishedRate": h.get("publishedRate"),
+            })
+            hotels.append(hotel.model_dump(mode="json", exclude_none=True))
 
         if not hotels:
             return {

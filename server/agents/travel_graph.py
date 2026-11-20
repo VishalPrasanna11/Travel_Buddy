@@ -1,7 +1,15 @@
 """
 Streaming travel pipeline behind POST /api/llm/ask.
 
-    intake ──► flights ─► hotels ─► attractions ─► restaurants ─► weather ─► compose ─► END
+                ┌─► destination ─┐
+                ├─► flights ─────┤
+    intake ─────┼─► hotels ──────┼─► compose ─► END
+                ├─► attractions ─┤
+                ├─► restaurants ─┤
+                └─► weather ─────┘
+
+Section nodes fan out in parallel (one LangGraph superstep), so total
+latency is the slowest provider, not the sum of all of them.
 
 intake   GPT-4o structured output turns the question into typed trip slots
          (destination, origin, dates, travelers, which sections are needed).
@@ -31,7 +39,7 @@ from pydantic import BaseModel, Field
 from agents import fixtures
 from tools.flight_search import _search_flights
 from tools.google_places_api import perform_google_places_explore
-from tools.google_places_common import google_api_key, normalize_place, text_search
+from tools.google_places_common import google_api_key, normalize_place, place_details, text_search
 from schemas.itinerary import Itinerary
 from tools.google_restaurant_api import perform_google_restaurant_search
 from tools.hotel_search import _search_hotels
@@ -282,6 +290,55 @@ def _shift(day: Optional[str], delta: int) -> Optional[str]:
         return None
 
 
+DETAILS_TOP_N = 3
+DETAIL_MERGE_FIELDS = ("reviews", "opening_hours", "editorial_summary", "website", "phone", "google_maps_uri", "price_level", "photos")
+
+
+async def enrich_places(items: List[Dict[str, Any]], key: str, kind: str) -> List[Dict[str, Any]]:
+    """Place Details (GET places/{id}) for the top results, merged into the Text Search entities."""
+    top = [p for p in items[:DETAILS_TOP_N] if p.get("place_id")]
+    details = await asyncio.gather(*[asyncio.to_thread(place_details, p["place_id"], key, kind) for p in top], return_exceptions=True)
+    by_id = {p.place_id: p for p in details if p and not isinstance(p, Exception)}
+    for item in items:
+        d = by_id.get(item.get("place_id"))
+        if not d:
+            continue
+        full = d.model_dump(mode="json", exclude_none=True)
+        for f in DETAIL_MERGE_FIELDS:
+            if full.get(f) and (not item.get(f) or (f in ("reviews", "photos") and len(full[f]) > len(item.get(f) or []))):
+                item[f] = full[f]
+        item["details_fetched_at"] = full.get("fetched_at")
+    return items
+
+
+HOTEL_GEO_TOP_N = 8
+
+
+def _hotel_location(name: str, address: Optional[str], city: str, key: str) -> Optional[Dict[str, float]]:
+    try:
+        res = text_search(", ".join(x for x in (name, address or city) if x), key, fields=["places.location"], limit=1, timeout=8)
+    except Exception:
+        return None
+    loc = (res[0].get("location") if res else None) or {}
+    if loc.get("latitude") is None:
+        return None
+    return {"lat": loc["latitude"], "lng": loc["longitude"]}
+
+
+async def locate_hotels(hotels: List[Dict[str, Any]], city: str) -> List[Dict[str, Any]]:
+    """RouteStack search results carry no coordinates; geocode the top hotels for map pins."""
+    key = google_api_key()
+    if not key:
+        return hotels
+    need = [h for h in hotels[:HOTEL_GEO_TOP_N] if not h.get("location")]
+    found = await asyncio.gather(*[asyncio.to_thread(_hotel_location, h["name"], h.get("address"), city, key) for h in need], return_exceptions=True)
+    for h, loc in zip(need, found):
+        if isinstance(loc, dict):
+            h["location"] = loc
+            h["location_source"] = "google_places"
+    return hotels
+
+
 async def _flights(trip, prefs):
     if not trip.get("start_date"):
         return _section("skipped", message="Add travel dates to search flights.")
@@ -313,7 +370,11 @@ async def _hotels(trip, prefs):
         "checkOutDate": trip["end_date"],
         "adults": str(trip.get("adults") or 2),
     }
+    if prefs.get("currency"):
+        params["currency"] = prefs["currency"]
     data = await asyncio.to_thread(_search_hotels, params)
+    if data.get("hotels"):
+        data["hotels"] = await locate_hotels(data["hotels"], trip["destination"])
     return _tool_result("hotels", data, f"No hotels in {trip['destination']} for those dates.")
 
 
@@ -326,6 +387,8 @@ async def _attractions(trip, prefs):
     interests = ", ".join(trip.get("interests") or [])
     query = f"top {interests + ' ' if interests else ''}attractions in {trip['destination']}"
     data = await asyncio.to_thread(perform_google_places_explore, trip["destination"], key, query)
+    if data.get("attractions"):
+        data["attractions"] = await enrich_places(data["attractions"], key, "attraction")
     return _tool_result("attractions", data, f"No places found in {trip['destination']}.")
 
 
@@ -336,6 +399,8 @@ async def _restaurants(trip, prefs):
     if not key:
         return _section("failed", message="Places search isn't configured.", code="PLACES_NOT_CONFIGURED")
     data = await asyncio.to_thread(perform_google_restaurant_search, trip["destination"], key, trip.get("cuisine"))
+    if data.get("restaurants"):
+        data["restaurants"] = await enrich_places(data["restaurants"], key, "restaurant")
     return _tool_result("restaurants", data, f"No restaurants found in {trip['destination']}.")
 
 
@@ -527,6 +592,9 @@ async def compose_node(state: TravelState) -> Dict[str, Any]:
 
 
 # ------------------------------------------------------------------ graph
+PARALLEL_NODES = ["destination", "flights", "hotels", "attractions", "restaurants", "weather"]
+
+
 def build_travel_graph():
     g = StateGraph(TravelState)
     g.add_node("intake", intake_node)
@@ -538,13 +606,10 @@ def build_travel_graph():
     g.add_node("weather", weather_node)
     g.add_node("compose", compose_node)
     g.set_entry_point("intake")
-    g.add_edge("intake", "destination")
-    g.add_edge("destination", "flights")
-    g.add_edge("flights", "hotels")
-    g.add_edge("hotels", "attractions")
-    g.add_edge("attractions", "restaurants")
-    g.add_edge("restaurants", "weather")
-    g.add_edge("weather", "compose")
+    # Fan out: every section runs in the same superstep; compose waits for all of them.
+    for node in PARALLEL_NODES:
+        g.add_edge("intake", node)
+        g.add_edge(node, "compose")
     g.add_edge("compose", END)
     return g.compile()
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, ChangeEvent } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { useAuth0 } from '@auth0/auth0-react';
+import { cancelAsk, conversationsApi, toChatMessages, useApiToken } from '@/api/ConversationsApi';
 
 import { AskError, ASK_TIMEOUT_MS, streamTravelQuestion } from '@/api/LLMApi';
 import { chatDb, type Conversation } from '@/db/indexedDb';
@@ -32,13 +32,6 @@ export function locationsFromData(data?: ResponseData): Location[] {
   return out;
 }
 
-/** Bearer token when signed in; never lets a slow token refresh block a question. */
-export async function bearerToken(isAuthenticated: boolean, get: () => Promise<string | undefined>): Promise<string | undefined> {
-  if (!isAuthenticated) return undefined;
-  const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 5000));
-  return Promise.race([get().catch(() => undefined), timeout]);
-}
-
 function titleFrom(text: string) {
   const clean = text.replace(/\s+/g, ' ').trim();
   return clean.length > 48 ? `${clean.slice(0, 47).trimEnd()}…` : clean || NEW_TITLE;
@@ -60,14 +53,15 @@ export function useChat(conversationId: string) {
   const [status, setStatus] = useState<ChatStatus>('loading');
   const [pendingSince, setPendingSince] = useState<number | null>(null);
 
-  const { getAccessTokenSilently, isAuthenticated } = useAuth0();
-  const { addDetectedLocations, clearDetectedLocations } = useMapLocations();
+  const getToken = useApiToken();
+  const { addDetectedLocations, clearDetectedLocations, setViewport } = useMapLocations();
 
   // Refs guard against double submits and stale async results.
   const inFlight = useRef(false);
   const loadedId = useRef<string | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const tokenRef = useRef<string | undefined>(undefined);
   const conversationRef = useRef<Pick<Conversation, 'title' | 'created_at' | 'customTitle'>>({ title: NEW_TITLE, created_at: Date.now() });
 
   messagesRef.current = messages;
@@ -83,11 +77,27 @@ export function useChat(conversationId: string) {
     setMessages([]);
     setInput('');
     clearDetectedLocations();
+    setViewport(null);
 
     (async () => {
       try {
         await chatDb.init();
-        const saved = await chatDb.getConversation(conversationId);
+        let saved = await chatDb.getConversation(conversationId);
+        if (!saved) {
+          // Not on this device: try the server copy (history syncs across devices).
+          const token = await getToken();
+          const remote = token ? await conversationsApi.get(conversationId, token).catch(() => null) : null;
+          if (remote?.messages?.length) {
+            saved = {
+              id: remote.id,
+              title: remote.title,
+              customTitle: remote.custom_title,
+              created_at: Date.parse(remote.created_at) || Date.now(),
+              updated_at: Date.parse(remote.updated_at) || Date.now(),
+              messages: toChatMessages(remote),
+            };
+          }
+        }
         if (cancelled) return;
         if (saved) {
           conversationRef.current = { title: saved.title, created_at: saved.created_at, customTitle: saved.customTitle };
@@ -112,7 +122,7 @@ export function useChat(conversationId: string) {
       cancelled = true;
       abortRef.current?.abort();
     };
-  }, [conversationId, addDetectedLocations, clearDetectedLocations]);
+  }, [conversationId, addDetectedLocations, clearDetectedLocations, setViewport, getToken]);
 
   // Persist after every change, but only once this conversation has loaded.
   useEffect(() => {
@@ -122,6 +132,7 @@ export function useChat(conversationId: string) {
     const meta = conversationRef.current;
     const firstUser = messages.find((m) => m.role === 'user');
     const title = meta.customTitle ? meta.title : meta.title === NEW_TITLE && firstUser ? titleFrom(firstUser.content) : meta.title;
+    // (A server-generated title, when one arrives with `final`, has already replaced meta.title.)
     conversationRef.current = { ...meta, title };
     chatDb
       .saveConversation({ id: conversationId, title, created_at: meta.created_at, updated_at: Date.now(), messages, customTitle: meta.customTitle })
@@ -149,7 +160,8 @@ export function useChat(conversationId: string) {
       let pinned = 0;
 
       try {
-        const token = await bearerToken(isAuthenticated, () => getAccessTokenSilently());
+        const token = await getToken();
+        tokenRef.current = token;
         const stream = streamTravelQuestion(
           { query: userMessage.content, chat_history: historyFor(prior), conversation_id: forId, ...extra },
           { signal: controller.signal, token }
@@ -163,6 +175,14 @@ export function useChat(conversationId: string) {
           }
           const next = applyStreamEvent(reply, ev);
           update(next);
+          if (ev.event === 'trip') {
+            const vp = (ev.data as { destination?: { viewport?: Parameters<typeof setViewport>[0] } }).destination?.viewport;
+            if (vp) setViewport(vp);
+          }
+          if (ev.event === 'final') {
+            const title = (ev.data as { title?: string }).title;
+            if (title && !conversationRef.current.customTitle) conversationRef.current = { ...conversationRef.current, title };
+          }
           if (ev.event === 'section' || ev.event === 'final') {
             const pins = locationsFromData(next.data);
             if (pins.length > pinned) {
@@ -201,7 +221,7 @@ export function useChat(conversationId: string) {
         }
       }
     },
-    [conversationId, getAccessTokenSilently, isAuthenticated, addDetectedLocations]
+    [conversationId, getToken, addDetectedLocations, setViewport]
   );
 
   /** Send text as a new user turn. Ignored while an answer is pending. */
@@ -259,6 +279,9 @@ export function useChat(conversationId: string) {
 
   /** Stop the answer in flight (keeps whatever already arrived). */
   const stop = useCallback(() => {
+    // Cancel server-side too (DELETE /api/llm/ask/{request_id}) so it stops spending tokens.
+    const requestId = messagesRef.current.find((m) => m.status === 'streaming')?.requestId;
+    if (requestId) void cancelAsk(requestId, tokenRef.current);
     abortRef.current?.abort('stop');
   }, []);
 

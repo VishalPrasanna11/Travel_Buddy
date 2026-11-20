@@ -15,8 +15,13 @@ export interface Location {
   isMock?: boolean; // Flag for mock/fallback results
 }
 
+export type Viewport = { low: { lat: number; lng: number }; high: { lat: number; lng: number } };
+
 // Define context type
 interface LocationContextType {
+  /** Destination bounds from the first `trip` event, before any pins exist. */
+  viewport: Viewport | null;
+  setViewport: (v: Viewport | null) => void;
   detectedLocations: Location[];
   selectedLocation: Location | null;
   savedLocations: Location[];
@@ -35,6 +40,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [detectedLocations, setDetectedLocations] = useState<Location[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [savedLocations, setSavedLocations] = useState<Location[]>([]);
+  const [viewport, setViewport] = useState<Viewport | null>(null);
 
   // Add new detected locations
   const addDetectedLocations = useCallback((locations: Location[]) => {
@@ -90,6 +96,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   return (
     <LocationContext.Provider
       value={{
+        viewport,
+        setViewport,
         detectedLocations,
         selectedLocation,
         savedLocations,

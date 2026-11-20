@@ -10,7 +10,8 @@ export function TravelMapComponent() {
     detectedLocations, 
     selectedLocation, 
     setSelectedLocation,
-    clearDetectedLocations
+    clearDetectedLocations,
+    viewport,
   } = useLocation();
   
   const [markers, setMarkers] = useState<Array<{
@@ -89,6 +90,7 @@ export function TravelMapComponent() {
         <div className="h-full">
           <MapComponent 
             markers={markers}
+            viewport={viewport}
             center={focus}
             zoom={17}
             focusTitle={focus ? selectedLocation?.name : undefined}

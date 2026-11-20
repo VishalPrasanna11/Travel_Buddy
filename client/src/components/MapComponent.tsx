@@ -17,6 +17,8 @@ interface MapComponentProps {
   onMapClick?: (location: { lat: number; lng: number }) => void;
   /** Title of the marker to highlight (opens its info bubble) after focusing. */
   focusTitle?: string;
+  /** Destination bounds: framed while there are no pins yet. */
+  viewport?: { low: { lat: number; lng: number }; high: { lat: number; lng: number } } | null;
 }
 
 let optionsSet = false;
@@ -45,6 +47,7 @@ export default function MapComponent({
   zoom = 17,
   focusTitle,
   markers = [],
+  viewport,
   height = "100%",
   width = "100%",
   onMapClick,
@@ -58,6 +61,8 @@ export default function MapComponent({
   const stableMarkers = useMemo(() => markers, [JSON.stringify(markers)]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const stableCenter = useMemo(() => center, [center?.lat, center?.lng]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableViewport = useMemo(() => viewport, [JSON.stringify(viewport)]);
 
   useEffect(() => {
     const initializeMap = async () => {
@@ -165,6 +170,12 @@ export default function MapComponent({
       google.maps.event.addListenerOnce(mapInstance, "idle", () => {
         if ((mapInstance.getZoom() ?? 0) > MAX_FIT_ZOOM) mapInstance.setZoom(MAX_FIT_ZOOM);
       });
+    } else if (stableViewport) {
+      // Results haven't arrived yet: open on the destination.
+      mapInstance.fitBounds(
+        new google.maps.LatLngBounds(stableViewport.low, stableViewport.high),
+        FIT_PADDING
+      );
     } else {
       mapInstance.setCenter(WORLD);
       mapInstance.setZoom(2);
@@ -178,7 +189,7 @@ export default function MapComponent({
         m.setMap(null);
       });
     };
-  }, [mapInstance, stableMarkers]);
+  }, [mapInstance, stableMarkers, stableViewport]);
 
   // A place picked from the list: pan to it close enough to separate
   // neighbouring pins.
