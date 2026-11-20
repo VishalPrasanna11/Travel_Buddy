@@ -45,7 +45,7 @@ function StateIcon({ state }: { state: AgentState }) {
 
 function headline(progress: AgentProgressMap, hasText: boolean) {
   if (hasText || progress.compose?.state === "running") return "Writing your answer"
-  if (progress.intake?.state === "running" || !progress.intake) return "Reading your request"
+  if (progress.intake?.state === "running" || Object.keys(progress).length === 0) return "Reading your request"
   const active = AGENTS.filter((a) => progress[a.key]?.state === "running").map((a) => a.label.toLowerCase())
   if (active.length) return `Checking ${active.join(", ")}`
   return "Putting your trip together"

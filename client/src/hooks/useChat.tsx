@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, ChangeEvent } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { cancelAsk, conversationsApi, toChatMessages, useApiToken } from '@/api/ConversationsApi';
+import { cancelAsk, conversationsApi, sendFeedback, toChatMessages, useApiToken } from '@/api/ConversationsApi';
 
 import { AskError, ASK_TIMEOUT_MS, streamTravelQuestion } from '@/api/LLMApi';
 import { chatDb, type Conversation } from '@/db/indexedDb';
@@ -191,7 +191,9 @@ export function useChat(conversationId: string) {
             }
           }
         }
-        if (reply.status === 'streaming') {
+        if (reply.clarification) {
+          // Paused for a clarifying question: the turn is the question itself.
+        } else if (reply.status === 'streaming') {
           // Stream closed without a final event.
           if (!reply.content) throw new AskError('incomplete', 'The answer stopped before it finished.');
           update({ ...reply, status: undefined });
@@ -277,6 +279,40 @@ export function useChat(conversationId: string) {
     setInput(userMessage.content);
   }, []);
 
+  /** Answer a clarifying question: resumes the paused agent on the server. */
+  const answerClarification = useCallback(
+    (messageId: string, answers: Record<string, unknown>, summary: string) => {
+      if (inFlight.current) return;
+      const msgs = messagesRef.current;
+      const target = msgs.find((m) => m.id === messageId);
+      if (!target?.clarification || target.clarification.answered) return;
+      const threadId = target.clarification.thread_id;
+      const answered = msgs.map((m) => (m.id === messageId && m.clarification ? { ...m, clarification: { ...m.clarification, answered: true } } : m));
+      const userMessage: ChatMessage = { id: uuidv4(), role: 'user', content: summary, createdAt: new Date() };
+      setMessages([...answered, userMessage]);
+      void ask(userMessage, answered, { resume: { request_id: threadId, answers } });
+    },
+    [ask]
+  );
+
+  /** Record thumbs up/down (POST /api/feedback). */
+  const giveFeedback = useCallback(
+    async (messageId: string, rating: 'up' | 'down', reason?: string) => {
+      const msg = messagesRef.current.find((m) => m.id === messageId);
+      if (!msg?.serverId) return false;
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, feedback: rating } : m)));
+      try {
+        await sendFeedback({ message_id: msg.serverId, rating, reason, request_id: msg.requestId }, await getToken());
+        return true;
+      } catch (err) {
+        console.error('Feedback failed', err);
+        setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, feedback: msg.feedback } : m)));
+        return false;
+      }
+    },
+    [getToken]
+  );
+
   /** Stop the answer in flight (keeps whatever already arrived). */
   const stop = useCallback(() => {
     // Cancel server-side too (DELETE /api/llm/ask/{request_id}) so it stops spending tokens.
@@ -288,6 +324,8 @@ export function useChat(conversationId: string) {
   return {
     messages,
     stop,
+    answerClarification,
+    giveFeedback,
     input,
     setInput,
     status,

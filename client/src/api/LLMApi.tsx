@@ -110,7 +110,7 @@ export type StreamEvent =
   | { event: "trip"; data: Record<string, unknown> }
   | { event: "section"; data: { type: SectionKey; section: { status: string; count?: number; items?: unknown[]; message?: string; forecast?: unknown } } }
   | { event: "delta"; data: { text: string } }
-  | { event: "clarification"; data: Record<string, unknown> }
+  | { event: "clarification"; data: { thread_id: string; question: string; missing: string[]; fields: unknown[]; trip?: unknown } }
   | { event: "final"; data: TravelResponse & { request_id: string } }
   | { event: "error"; data: { code: string; message: string; retryable?: boolean; section?: string; request_id?: string; retry_after?: number } };
 

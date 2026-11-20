@@ -277,3 +277,20 @@
   ::view-transition-old(*),
   ::view-transition-new(*) { animation: none !important; }
 }
+
+/* Streaming answer: a soft caret after the last word while tokens arrive. */
+.typing-caret > :last-child > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5ch;
+  height: 1.05em;
+  margin-left: 0.15ch;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--color-raspberry);
+  animation: caret-blink 1s steps(2, start) infinite;
+}
+@keyframes caret-blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .typing-caret > :last-child > :last-child::after { animation: none; }
+}

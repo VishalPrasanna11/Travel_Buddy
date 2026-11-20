@@ -158,6 +158,12 @@ def parse_request(text: str, today: str):
     t = text.lower()
     if re.fullmatch(r"\s*(hi|hello|hey)[!. ]*", t):
         return TripRequest(intent="greeting")
+    if any(w in t for w in ("python", "homework", "joke", "javascript")):
+        return TripRequest(intent="general", in_scope=False, scope_reason="I'm a travel planner, so I can't help with that — but I can plan a trip!",
+                           redirect_suggestions=["Plan a weekend in Lisbon", "Best neighborhoods in Tokyo", "Weather in Rome next week"])
+    if "portland" in t:
+        return TripRequest(intent="plan_trip", destination="Portland", destination_ambiguous=True,
+                           destination_options=["Portland, Oregon, USA", "Portland, Maine, USA"], sections=["hotels", "attractions", "restaurants", "weather"])
     origin = "Boston" if "boston" in t or " bos" in t else None
     has_dates = bool(re.search(r"\d|march|april|may|june|july|next|week", t))
     intent = "plan_trip"
@@ -217,3 +223,8 @@ def itinerary(state) -> Dict[str, Any]:
         ],
         "summary": "Four days: arrival, Alfama, Belém, and a slow Chiado finale.",
     }
+
+
+def suggestions(trip) -> List[str]:
+    dest = (trip.get("destination") or "Lisbon").split(",")[0]
+    return [f"Add a day trip from {dest}", "Show cheaper hotels", "What's the weather like?"]

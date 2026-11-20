@@ -96,3 +96,7 @@ export async function cancelAsk(requestId: string, token?: string) {
 export function bookEntity(entityId: string, token?: string) {
   return api<{ url: string; checkout_mode?: string; kind: string }>(`/api/book/${encodeURIComponent(entityId)}`, token, { method: "POST" });
 }
+
+export function sendFeedback(body: { message_id: string; rating: "up" | "down"; reason?: string; request_id?: string }, token?: string) {
+  return api<{ message_id: string; rating: string }>("/api/feedback", token, { method: "POST", body: JSON.stringify(body) });
+}

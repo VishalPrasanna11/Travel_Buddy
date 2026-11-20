@@ -17,6 +17,33 @@ logger = logging.getLogger("stream_runner")
 HEARTBEAT_S = 15
 
 _running: Dict[str, Dict[str, Any]] = {}
+# thread_id -> (owner sub, question, created) for paused (clarification) graphs
+_threads: Dict[str, tuple] = {}
+THREAD_TTL_S = 30 * 60
+
+
+def remember_thread(thread_id: str, owner: Optional[str], question: str) -> None:
+    import time
+
+    now = time.time()
+    for k in [k for k, v in _threads.items() if now - v[2] > THREAD_TTL_S]:
+        _threads.pop(k, None)
+    _threads[thread_id] = (owner, question, now)
+
+
+def thread_owner(thread_id: Optional[str]):
+    """Owner sub (or None for anonymous) of a known thread; False if unknown/expired."""
+    entry = _threads.get(thread_id or "")
+    return False if entry is None else entry[0]
+
+
+def forget_thread(thread_id: Optional[str]) -> None:
+    _threads.pop(thread_id or "", None)
+
+
+def thread_question(thread_id: Optional[str]) -> Optional[str]:
+    entry = _threads.get(thread_id or "")
+    return entry[1] if entry else None
 
 # Section codes → retryable flag (mid-stream errors)
 SECTION_EVENT_TYPES = ("agent", "plan", "trip", "section", "delta", "clarification", "final", "error")

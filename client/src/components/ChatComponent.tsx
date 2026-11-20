@@ -13,6 +13,7 @@ import { AgentProgress } from '@/components/chat/agent-progress';
 import { Composer, type ComposerHandle } from '@/components/chat/composer';
 import { ChatWelcome } from '@/components/chat/chat-welcome';
 import { ItineraryView } from '@/components/chat/itinerary';
+import { ClarificationCard, FeedbackButtons, OutOfScope, SuggestionChips } from '@/components/chat/follow-ups';
 import type { Location } from '@/components/LocationContext';
 import type { ChatMessage } from '@/components/chat/types';
 
@@ -30,6 +31,8 @@ type ChatComponentProps = {
   onNewTrip: () => void;
   onStop?: () => void;
   onShowOnMap?: (pins: Location[], label: string) => void;
+  onAnswerClarification?: (messageId: string, answers: Record<string, unknown>, summary: string) => void;
+  onFeedback?: (messageId: string, rating: 'up' | 'down', reason?: string) => Promise<boolean>;
 };
 
 const NEAR_BOTTOM_PX = 120;
@@ -89,7 +92,7 @@ function ErrorTurn({ message, onRetry, onEdit, onNewTrip, disabled }: { message:
 
 export default function ChatComponent({
   messages, input, pending, pendingSince, ready,
-  onInputChange, onSend, onPick, onRetry, onEdit, onNewTrip, onStop, onShowOnMap,
+  onInputChange, onSend, onPick, onRetry, onEdit, onNewTrip, onStop, onShowOnMap, onAnswerClarification, onFeedback,
 }: ChatComponentProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
@@ -99,6 +102,7 @@ export default function ChatComponent({
   const { user } = useAuth0();
   const userInitial = (user?.given_name || user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
   const isEmpty = messages.length === 0;
+  const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant' && !m.status)?.id;
 
   const scrollToBottom = useCallback((smooth = true) => {
     const el = scrollRef.current;
@@ -190,19 +194,42 @@ export default function ChatComponent({
                   ) : m.status === 'streaming' ? (
                     <MessageRow role="assistant" aria-busy="true">
                       <AgentProgress since={pendingSince ?? Date.now()} progress={m.progress} hasText={!!m.content} onStop={onStop} />
-                      {m.content && <AnswerMarkdown>{m.content}</AnswerMarkdown>}
+                      {m.content && (
+                        <div className="typing-caret">
+                          <AnswerMarkdown>{m.content}</AnswerMarkdown>
+                        </div>
+                      )}
                       <WeatherNote data={m.data} answer={m.content} />
                       <ResultCards data={m.data} />
+                    </MessageRow>
+                  ) : m.clarification ? (
+                    <MessageRow role="assistant">
+                      <p className="font-medium text-ink">{m.clarification.question}</p>
+                      <ClarificationCard
+                        c={m.clarification}
+                        busy={pending}
+                        onAnswer={(answers, summary) => onAnswerClarification?.(m.id, answers, summary)}
+                      />
+                    </MessageRow>
+                  ) : m.data?.status === 'out_of_scope' ? (
+                    <MessageRow role="assistant">
+                      <OutOfScope reason={m.data.reason ?? m.content} suggestions={m.data.suggestions} onPick={onPick} disabled={pending} />
                     </MessageRow>
                   ) : (
                     <MessageRow
                       role="assistant"
-                      footer={<CopyButton content={m.content} copyMessage="Answer copied" label="Copy answer" />}
+                      footer={
+                        <span className="flex flex-wrap items-center gap-1">
+                          <CopyButton content={m.content} copyMessage="Answer copied" label="Copy answer" />
+                          {onFeedback && <FeedbackButtons message={m} onFeedback={(r, why) => onFeedback(m.id, r, why)} />}
+                        </span>
+                      }
                     >
                       <AnswerMarkdown>{m.content}</AnswerMarkdown>
                       <ItineraryView data={m.data} onShowOnMap={onShowOnMap} />
                       <WeatherNote data={m.data} answer={m.content} />
                       <ResultCards data={m.data} />
+                      {m.id === lastAssistantId && <SuggestionChips suggestions={m.data?.suggestions} onPick={onPick} disabled={pending} />}
                     </MessageRow>
                   )}
                 </li>

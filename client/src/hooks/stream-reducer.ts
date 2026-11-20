@@ -1,7 +1,7 @@
 import type { StreamEvent, TravelResponse } from "@/api/LLMApi";
 import type { ChatMessage, ResponseData, SectionKey, SectionStatus } from "@/components/chat/types";
 
-const DATA_KEYS = ["status", "location", "trip", "itinerary", "sections", "restaurants", "attractions", "attractions_list", "hotels", "flights", "cars", "weather"] as const;
+const DATA_KEYS = ["status", "reason", "suggestions", "location", "trip", "itinerary", "sections", "restaurants", "attractions", "attractions_list", "hotels", "flights", "cars", "weather"] as const;
 
 /** Keep only the structured fields we render; never the raw blob. */
 export function pickData(response: TravelResponse | Record<string, unknown>): ResponseData | undefined {
@@ -39,6 +39,8 @@ export function applyStreamEvent(msg: ChatMessage, ev: StreamEvent): ChatMessage
       }
       return { ...msg, data };
     }
+    case "clarification":
+      return { ...msg, status: undefined, content: String(ev.data.question ?? ""), clarification: ev.data as unknown as ChatMessage["clarification"] };
     case "delta":
       return { ...msg, content: msg.content + ev.data.text };
     case "final": {

@@ -48,3 +48,18 @@ class ConversationMessage(AppBase):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     conversation = relationship("Conversation", back_populates="messages")
+
+
+class Feedback(AppBase):
+    __tablename__ = "message_feedback"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_sub = Column(String(128), nullable=False, index=True)
+    message_id = Column(String(64), nullable=False, index=True)
+    request_id = Column(String(64), nullable=True)
+    rating = Column(String(8), nullable=False)  # "up" | "down"
+    reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (Index("ux_feedback_user_message", "user_sub", "message_id", unique=True),)

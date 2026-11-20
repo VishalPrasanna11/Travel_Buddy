@@ -102,7 +102,16 @@ async def ask_stream(payload: AskRequest, request: Request, ident: Optional[Iden
     wait = ask_limiter.check(client_key)
     if wait:
         return error_response(429, "Too many questions at once. Try again shortly.", request_id, retry_after=wait)
-    if not payload.query.strip():
+    resume = payload.resume or None
+    thread_id = None
+    if resume:
+        thread_id = str(resume.get("request_id") or resume.get("thread_id") or "")
+        owner = stream_runner.thread_owner(thread_id)
+        if not thread_id or owner is False:
+            return error_response(410, "That question expired. Ask again.", request_id, code="CLARIFICATION_EXPIRED")
+        if owner and (not ident or ident.sub != owner):
+            return error_response(403, "You can only answer your own questions.", request_id)
+    elif not payload.query.strip():
         return error_response(400, "Ask a question first.", request_id, code="EMPTY_QUERY")
 
     history = [
@@ -110,10 +119,22 @@ async def ask_stream(payload: AskRequest, request: Request, ident: Optional[Iden
         for m in (payload.chat_history or [])[-10:]
         if m.get("content")
     ]
-    events = root_agent.astream({"input": payload.query, "history": history}, request_id=request_id)
+    answers = (resume or {}).get("answers") or {}
+    events = root_agent.astream(
+        {"input": payload.query, "history": history},
+        request_id=request_id,
+        resume=answers if resume else None,
+        thread_id=thread_id,
+    )
+
+    # A resumed turn belongs to the question that was paused, not to the answer summary.
+    question = (stream_runner.thread_question(thread_id) if resume else None) or payload.query or ""
+    if not resume:
+        stream_runner.remember_thread(request_id, ident.sub if ident else None, payload.query)
 
     async def on_final(ev):
-        saved = await persist_turn(ident, payload.conversation_id, payload.query, ev, request_id)
+        stream_runner.forget_thread(thread_id or request_id)
+        saved = await persist_turn(ident, payload.conversation_id, question, ev, request_id)
         return {"conversation_id": payload.conversation_id, **saved}
 
     return StreamingResponse(

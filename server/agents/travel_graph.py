@@ -11,15 +11,18 @@ Streaming travel pipeline behind POST /api/llm/ask.
 Section nodes fan out in parallel (one LangGraph superstep), so total
 latency is the slowest provider, not the sum of all of them.
 
-intake   GPT-4o structured output turns the question into typed trip slots
+intake   GPT-4o structured output: scope check + typed trip slots
          (destination, origin, dates, travelers, which sections are needed).
+clarify  when required info is missing (origin, dates, ambiguous destination)
+         the graph pauses with interrupt() and resumes with the user's answer.
 section  each node calls one provider through the normalized tools and writes
          its own key in `sections`; nodes not needed for this question skip.
-compose  writes the narrative answer from the structured results only.
+compose  streams the narrative, and builds the structured itinerary and
+         follow-up suggestions in parallel.
 
-Each node emits progress through LangGraph's stream writer, so
-`graph.astream(stream_mode=["updates", "custom", "messages"])` yields agent
-status, finished sections and narrative tokens as they happen.
+Nodes report progress with custom callback events, so
+`graph.astream_events(version="v2")` yields agent status, finished sections
+and narrative tokens (on_chat_model_stream) as they happen.
 """
 from __future__ import annotations
 
@@ -27,13 +30,15 @@ import asyncio
 import json
 import logging
 import os
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langgraph.config import get_stream_writer
+from langchain_core.callbacks.manager import adispatch_custom_event
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, StateGraph
+from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from agents import fixtures
@@ -87,6 +92,8 @@ class TravelState(TypedDict, total=False):
     destination: Dict[str, Any]
     answer: str
     itinerary: Dict[str, Any]
+    suggestions: List[str]
+    clarified: bool
     status: str
 
 
@@ -111,6 +118,11 @@ class TripRequest(BaseModel):
         default_factory=list,
         description="Which live searches answer this question. A full trip plan needs all that apply.",
     )
+    in_scope: bool = Field(True, description="True for anything about travel, places, trips, food, culture, logistics")
+    scope_reason: Optional[str] = Field(None, description="If not in scope: short, friendly reason")
+    redirect_suggestions: List[str] = Field(default_factory=list, description="If not in scope: 2-3 travel questions they could ask instead")
+    destination_ambiguous: bool = Field(False, description="True only if the destination could mean clearly different places (e.g. 'Portland', 'San Jose')")
+    destination_options: List[str] = Field(default_factory=list, description="If ambiguous: the 2-4 likely places, as searchable names")
 
 
 INTAKE_PROMPT = """You turn a traveler's message into structured search parameters for TravelBuddy.
@@ -122,7 +134,11 @@ Pick `sections` to cover the request:
 - flights / hotels / attractions / restaurants / weather: that section (add weather when packing)
 - general questions about a place (neighborhoods, best time to visit, culture): attractions only if useful, else none
 - greeting: none
-Never invent an origin or dates the user did not give or clearly imply."""
+Never invent an origin or dates the user did not give or clearly imply.
+SCOPE: TravelBuddy answers anything a traveler might ask — destinations, neighborhoods ("best neighborhoods in
+Lisbon" is in scope), where to stay or eat, culture, safety, visas, budgets, packing, weather, transport, events.
+Mark in_scope=false only when the request has nothing to do with travel or places (coding help, math homework,
+celebrity gossip, writing essays). Then give a kind scope_reason and 2-3 redirect_suggestions."""
 
 
 def _history_text(history: List[Dict[str, str]], limit: int = 6) -> str:
@@ -160,16 +176,16 @@ def compose_llm():
     return _compose_llm
 
 
-def emit(payload: Dict[str, Any]) -> None:
-    """Send a custom stream event (agent status / section / trip)."""
+async def emit(payload: Dict[str, Any]) -> None:
+    """Send a progress event (agent status / section / trip) to astream_events consumers."""
     try:
-        get_stream_writer()(payload)
-    except Exception:  # not streaming (e.g. ainvoke) — nothing to send
+        await adispatch_custom_event("travelbuddy", payload)
+    except Exception:  # no callback context (e.g. called outside a run) — nothing to send
         pass
 
 
 async def intake_node(state: TravelState) -> Dict[str, Any]:
-    emit({"event": "agent", "agent": "intake", "state": "running"})
+    await emit({"event": "agent", "agent": "intake", "state": "running"})
     if use_fixtures():
         req = fixtures.parse_request(state["user_input"], state["today"])
     else:
@@ -185,15 +201,147 @@ async def intake_node(state: TravelState) -> Dict[str, Any]:
         trip["adults"] = prefs["default_adults"]
     if not trip.get("origin") and prefs.get("home_airport") and "flights" in trip.get("sections", []):
         trip["origin"] = prefs["home_airport"]
+    await emit({"event": "agent", "agent": "intake", "state": "done"})
+    if not trip.get("in_scope", True):
+        return {"trip": trip, "status": "out_of_scope"}
+    if missing_fields(trip, state) and not state.get("clarified"):
+        return {"trip": trip}
+    return {"trip": await announce_plan(trip)}
+
+
+async def announce_plan(trip: Dict[str, Any]) -> Dict[str, Any]:
     if not trip.get("origin") and "flights" in trip["sections"]:
         trip["sections"] = [s for s in trip["sections"] if s != "flights"]
     planned = [s for s in SECTIONS if s in trip["sections"] and trip.get("destination")]
     trip["sections"] = planned
-    emit({"event": "agent", "agent": "intake", "state": "done"})
-    emit({"event": "plan", "sections": planned, "trip": trip})
+    await emit({"event": "plan", "sections": planned, "trip": trip})
     for s in planned:
-        emit({"event": "agent", "agent": s, "state": "queued"})
-    return {"trip": trip}
+        await emit({"event": "agent", "agent": s, "state": "queued"})
+    return trip
+
+
+# --------------------------------------------------------------- clarify
+NEEDS_DESTINATION = {"plan_trip", "flights", "hotels", "attractions", "restaurants", "weather", "packing"}
+
+
+def missing_fields(trip: Dict[str, Any], state: TravelState) -> List[str]:
+    intent = trip.get("intent")
+    missing: List[str] = []
+    if intent in NEEDS_DESTINATION and (not trip.get("destination") or trip.get("destination_ambiguous")):
+        missing.append("destination")
+    if intent in ("plan_trip", "hotels", "flights") and not trip.get("start_date"):
+        missing.append("dates")
+    elif intent in ("plan_trip", "hotels") and not trip.get("end_date"):
+        missing.append("dates")
+    if intent == "flights" and not trip.get("origin"):
+        missing.append("origin")
+    if intent == "plan_trip" and not trip.get("origin") and not (state.get("prefs") or {}).get("home_airport"):
+        missing.append("origin")
+    return missing
+
+
+def _date_options(today: str) -> List[Dict[str, str]]:
+    t = datetime.strptime(today, "%Y-%m-%d").date()
+    fri = t + timedelta(days=(4 - t.weekday()) % 7 or 7)
+    in2 = fri + timedelta(days=7)
+    month = (t.replace(day=1) + timedelta(days=32)).replace(day=1)
+    month_fri = month + timedelta(days=(4 - month.weekday()) % 7)
+    fmt = lambda d: d.strftime("%b %-d")
+    return [
+        {"label": f"Next weekend ({fmt(fri)}–{fmt(fri + timedelta(days=2))})", "start_date": fri.isoformat(), "end_date": (fri + timedelta(days=2)).isoformat()},
+        {"label": f"In two weeks, 4 days ({fmt(in2)}–{fmt(in2 + timedelta(days=3))})", "start_date": in2.isoformat(), "end_date": (in2 + timedelta(days=3)).isoformat()},
+        {"label": f"A week in {month.strftime('%B')} ({fmt(month_fri)}–{fmt(month_fri + timedelta(days=7))})", "start_date": month_fri.isoformat(), "end_date": (month_fri + timedelta(days=7)).isoformat()},
+    ]
+
+
+def clarification_payload(trip: Dict[str, Any], state: TravelState) -> Dict[str, Any]:
+    missing = missing_fields(trip, state)
+    fields: List[Dict[str, Any]] = []
+    prefs = state.get("prefs") or {}
+    if "destination" in missing:
+        fields.append({
+            "name": "destination", "type": "choice" if trip.get("destination_options") else "text",
+            "label": "Which place do you mean?" if trip.get("destination_options") else "Where would you like to go?",
+            "options": [{"label": o, "value": o} for o in trip.get("destination_options") or []],
+            "optional": False,
+        })
+    if "dates" in missing:
+        fields.append({
+            "name": "dates", "type": "date_range", "label": "When are you travelling?",
+            "options": _date_options(state["today"]), "optional": trip.get("intent") not in ("hotels", "flights"),
+        })
+    if "origin" in missing:
+        opts = [{"label": prefs["home_airport"], "value": prefs["home_airport"]}] if prefs.get("home_airport") else []
+        fields.append({
+            "name": "origin", "type": "text", "label": "Where are you flying from?",
+            "placeholder": "City or airport, e.g. Boston or BOS", "options": opts,
+            "optional": trip.get("intent") != "flights", "skip_label": "Skip flights",
+        })
+    labels = {"destination": "where", "dates": "when", "origin": "where from"}
+    question = "Quick check before I search: " + ", ".join(labels[m] for m in missing) + "?"
+    return {"question": question, "missing": missing, "fields": fields, "trip": {k: trip.get(k) for k in ("intent", "destination", "origin", "start_date", "end_date", "adults")}}
+
+
+async def clarify_node(state: TravelState) -> Dict[str, Any]:
+    """Pause the graph for missing info; resume merges the answers into the trip."""
+    trip = dict(state.get("trip") or {})
+    answers = interrupt(clarification_payload(trip, state)) or {}
+    skipped = set(answers.get("skip") or [])
+    if answers.get("destination"):
+        trip["destination"] = str(answers["destination"])[:120]
+        trip["destination_ambiguous"] = False
+    if answers.get("start_date"):
+        trip["start_date"] = str(answers["start_date"])[:10]
+    if answers.get("end_date"):
+        trip["end_date"] = str(answers["end_date"])[:10]
+    if answers.get("origin") and "origin" not in skipped:
+        trip["origin"] = str(answers["origin"])[:80]
+        if trip.get("intent") in ("plan_trip", "flights") and "flights" not in trip["sections"]:
+            trip["sections"] = ["flights", *trip["sections"]]
+    if answers.get("adults"):
+        try:
+            trip["adults"] = max(1, min(9, int(answers["adults"])))
+        except (TypeError, ValueError):
+            pass
+    if "origin" in skipped:
+        trip["origin"] = None
+    return {"trip": await announce_plan(trip), "clarified": True}
+
+
+SCOPE_PROMPT = """Decide if a message is in scope for TravelBuddy, a travel planning assistant.
+In scope: anything about travel, destinations, neighborhoods, places, food and restaurants, culture, events,
+safety, visas, money, packing, weather, transport, accommodation, itineraries, and greetings/small talk.
+Out of scope: requests unrelated to travel or places (coding, homework, general trivia, writing unrelated text)."""
+
+
+class ScopeDecision(BaseModel):
+    in_scope: bool
+    reason: Optional[str] = Field(description="If out of scope: short, friendly reason; else null")
+    suggestions: List[str] = Field(description="If out of scope: 2-3 travel questions to ask instead; else empty")
+
+
+_scope_llm = None
+
+
+async def classify_scope(text: str) -> ScopeDecision:
+    """Structured scope check (also used by the legacy endpoint before refusing)."""
+    global _scope_llm
+    if use_fixtures():
+        return ScopeDecision(in_scope=not any(w in text.lower() for w in ("python", "homework", "joke")), reason="I plan trips, not code.", suggestions=["Plan 3 days in Lisbon"])
+    if _scope_llm is None:
+        _scope_llm = ChatOpenAI(model="gpt-4o", temperature=0).with_structured_output(ScopeDecision, method="json_schema", strict=True)
+    return await _scope_llm.ainvoke([SystemMessage(content=SCOPE_PROMPT), HumanMessage(content=text)])
+
+
+async def scope_reply_node(state: TravelState) -> Dict[str, Any]:
+    trip = state.get("trip") or {}
+    reason = trip.get("scope_reason") or "That's outside what I can help with — I'm a travel planner."
+    suggestions = trip.get("redirect_suggestions") or [
+        "Plan a long weekend in Lisbon",
+        "Best neighborhoods to stay in Tokyo",
+        "What's the weather like in Rome next week?",
+    ]
+    return {"answer": reason, "suggestions": suggestions[:3], "status": "out_of_scope"}
 
 
 # ------------------------------------------------------------ destination
@@ -240,7 +388,7 @@ async def destination_node(state: TravelState) -> Dict[str, Any]:
     dest = fixtures.destination() if use_fixtures() else await asyncio.to_thread(geocode_destination, name)
     if not dest:
         return {}
-    emit({"event": "trip", "destination": dest, "start_date": trip.get("start_date"), "end_date": trip.get("end_date")})
+    await emit({"event": "trip", "destination": dest, "start_date": trip.get("start_date"), "end_date": trip.get("end_date")})
     return {"destination": dest}
 
 
@@ -254,7 +402,7 @@ async def _run_section(name: str, state: TravelState, fn) -> Dict[str, Any]:
     trip = state.get("trip") or {}
     if name not in trip.get("sections", []):
         return {}
-    emit({"event": "agent", "agent": name, "state": "running"})
+    await emit({"event": "agent", "agent": name, "state": "running"})
     if use_fixtures():
         await asyncio.sleep(FIXTURE_LATENCY.get(name, 0.5))  # make progressive arrival visible locally
     try:
@@ -265,8 +413,8 @@ async def _run_section(name: str, state: TravelState, fn) -> Dict[str, Any]:
         logger.exception(f"{name} section failed")
         result = _section("failed", message=f"{AGENT_LABELS[name]} search failed: {e}", code=f"{name.upper()}_FAILED", retryable=True)
     state_name = {"ok": "done", "estimate": "done", "empty": "empty", "failed": "failed", "skipped": "skipped"}[result["status"]]
-    emit({"event": "agent", "agent": name, "state": state_name, "count": result.get("count"), "message": result.get("message")})
-    emit({"event": "section", "type": name, "section": result})
+    await emit({"event": "agent", "agent": name, "state": state_name, "count": result.get("count"), "message": result.get("message")})
+    await emit({"event": "section", "type": name, "section": result})
     return {"sections": {name: result}}
 
 
@@ -556,20 +704,53 @@ async def build_itinerary(state: TravelState, results: Dict[str, Any]) -> Option
     return clean_itinerary(it.model_dump(), state)
 
 
+class FollowUps(BaseModel):
+    suggestions: List[str] = Field(description="3 short follow-up requests the traveler might send next, each under 40 characters")
+
+
+SUGGEST_PROMPT = """Suggest 3 next steps the traveler could tap to refine or extend this trip, phrased as their own request,
+under 40 characters each, specific to the destination and results (e.g. "Add a Sintra day trip", "Show cheaper hotels",
+"What's the weather like?"). If a section failed or was skipped, one suggestion should retry or fill it
+(e.g. "Search flights from Boston"). No numbers you can't see in RESULTS."""
+
+_suggest_llm = None
+
+
+async def build_suggestions(state: TravelState, results: Dict[str, Any]) -> List[str]:
+    global _suggest_llm
+    trip = state.get("trip") or {}
+    if use_fixtures():
+        return fixtures.suggestions(trip)
+    if _suggest_llm is None:
+        _suggest_llm = ChatOpenAI(model="gpt-4o", temperature=0.5).with_structured_output(FollowUps, method="json_schema", strict=True)
+    try:
+        out: FollowUps = await _suggest_llm.ainvoke([
+            SystemMessage(content=SUGGEST_PROMPT),
+            SystemMessage(content="TRIP: " + json.dumps({k: trip.get(k) for k in ("intent", "destination", "origin", "start_date", "end_date", "interests")}, default=str)),
+            SystemMessage(content="RESULTS: " + json.dumps({k: {"status": v.get("status"), "message": v.get("message")} for k, v in results.items()}, default=str)),
+            HumanMessage(content=state["user_input"]),
+        ])
+    except Exception as e:
+        logger.info(f"suggestions skipped: {e}")
+        return []
+    return [x.strip()[:60] for x in out.suggestions if x.strip()][:4]
+
+
 async def compose_node(state: TravelState) -> Dict[str, Any]:
-    emit({"event": "agent", "agent": "compose", "state": "running"})
+    await emit({"event": "agent", "agent": "compose", "state": "running"})
     trip = state.get("trip") or {}
     results = compact_results(state.get("sections") or {})
     itinerary_task = asyncio.create_task(build_itinerary(state, results))
+    suggestions_task = asyncio.create_task(build_suggestions(state, results))
     if use_fixtures():
         answer = fixtures.answer(trip, results)
         # Stream the canned answer word by word like the model would.
         for word in answer.split(" "):
-            emit({"event": "delta", "text": word + " "})
+            await emit({"event": "delta", "text": word + " "})
             await asyncio.sleep(0.01)
-        itinerary = await itinerary_task
-        emit({"event": "agent", "agent": "compose", "state": "done"})
-        return {"answer": answer, "itinerary": itinerary or {}, "status": "success"}
+        itinerary, suggestions = await asyncio.gather(itinerary_task, suggestions_task)
+        await emit({"event": "agent", "agent": "compose", "state": "done"})
+        return {"answer": answer, "itinerary": itinerary or {}, "suggestions": suggestions, "status": "success"}
 
     messages = [
         SystemMessage(content=COMPOSE_PROMPT.format(today=state["today"])),
@@ -586,13 +767,21 @@ async def compose_node(state: TravelState) -> Dict[str, Any]:
         if text:
             chunks.append(text)
     answer = "".join(chunks).strip()
-    itinerary = await itinerary_task
-    emit({"event": "agent", "agent": "compose", "state": "done"})
-    return {"answer": answer, "itinerary": itinerary or {}, "status": "success"}
+    itinerary, suggestions = await asyncio.gather(itinerary_task, suggestions_task)
+    await emit({"event": "agent", "agent": "compose", "state": "done"})
+    return {"answer": answer, "itinerary": itinerary or {}, "suggestions": suggestions, "status": "success"}
 
 
 # ------------------------------------------------------------------ graph
 PARALLEL_NODES = ["destination", "flights", "hotels", "attractions", "restaurants", "weather"]
+
+
+def route_after_intake(state: TravelState):
+    if state.get("status") == "out_of_scope":
+        return "scope_reply"
+    if missing_fields(state.get("trip") or {}, state) and not state.get("clarified"):
+        return "clarify"
+    return PARALLEL_NODES
 
 
 def build_travel_graph():
@@ -605,13 +794,18 @@ def build_travel_graph():
     g.add_node("restaurants", restaurants_node)
     g.add_node("weather", weather_node)
     g.add_node("compose", compose_node)
+    g.add_node("clarify", clarify_node)
+    g.add_node("scope_reply", scope_reply_node)
     g.set_entry_point("intake")
     # Fan out: every section runs in the same superstep; compose waits for all of them.
+    g.add_conditional_edges("intake", route_after_intake, ["scope_reply", "clarify", *PARALLEL_NODES])
+    g.add_conditional_edges("clarify", lambda s: PARALLEL_NODES, PARALLEL_NODES)
     for node in PARALLEL_NODES:
-        g.add_edge("intake", node)
         g.add_edge(node, "compose")
     g.add_edge("compose", END)
-    return g.compile()
+    g.add_edge("scope_reply", END)
+    # Checkpointer: needed to pause for clarifying questions and resume later.
+    return g.compile(checkpointer=InMemorySaver())
 
 
 travel_graph = build_travel_graph()
@@ -629,6 +823,8 @@ def initial_state(request_id: str, query: str, history: List[Dict[str, str]], pr
         "destination": {},
         "answer": "",
         "itinerary": {},
+        "suggestions": [],
+        "clarified": False,
         "status": "running",
     }
 
@@ -655,4 +851,9 @@ def final_payload(state: Dict[str, Any]) -> Dict[str, Any]:
         payload["trip"] = {**payload["trip"], "destination": state["destination"]}
     if state.get("itinerary"):
         payload["itinerary"] = state["itinerary"]
+    payload["suggestions"] = state.get("suggestions") or []
+    if state.get("status") == "out_of_scope":
+        payload["reason"] = state.get("answer")
+    # Slots only the server needs.
+    payload["trip"] = {k: v for k, v in payload["trip"].items() if k not in ("scope_reason", "redirect_suggestions", "destination_options", "destination_ambiguous", "in_scope")}
     return payload

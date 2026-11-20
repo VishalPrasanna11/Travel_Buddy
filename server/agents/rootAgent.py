@@ -13,7 +13,8 @@ from subagents.pre_travel.agent import PreTripAgent
 from subagents.planning.agent import PlanningAgent
 from tools.memory import _load_precreated_itinerary
 from tools.weather_tool import weather_tool
-from agents.travel_graph import travel_graph, initial_state, final_payload, merge_dicts
+from agents.travel_graph import travel_graph, initial_state, final_payload
+from langgraph.types import Command
 
 logger = logging.getLogger("root_agent")
 
@@ -330,36 +331,52 @@ class Agent:
         inputs: Dict[str, Any],
         request_id: str,
         prefs: Optional[Dict[str, Any]] = None,
+        resume: Optional[Dict[str, Any]] = None,
+        thread_id: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Stream the travel pipeline node by node.
+        """Stream the travel pipeline with graph.astream_events(version="v2").
 
-        Yields dicts with an `event` key: agent | plan | section | delta | final.
-        Each sub-agent node reports as soon as it finishes instead of the whole
-        graph resolving at once (the old ainvoke()).
+        Yields dicts with an `event` key: agent | plan | trip | section | delta |
+        clarification | final. Node progress arrives as custom events; the
+        narrative arrives token by token from on_chat_model_stream. When the
+        graph pauses for a clarifying question the stream ends with a
+        `clarification` event; call again with `resume` and the same thread_id.
         """
-        state = initial_state(request_id, inputs.get("input", ""), inputs.get("history") or [], prefs)
-        acc: Dict[str, Any] = dict(state)
+        thread_id = thread_id or request_id
+        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 25}
+        if resume is not None:
+            graph_input: Any = Command(resume=resume)
+        else:
+            graph_input = initial_state(request_id, inputs.get("input", ""), inputs.get("history") or [], prefs)
         streamed_text = False
-        async for mode, chunk in travel_graph.astream(state, stream_mode=["updates", "custom", "messages"]):
-            if mode == "custom":
-                if chunk.get("event") == "delta":
+        async for ev in travel_graph.astream_events(graph_input, config, version="v2"):
+            kind = ev.get("event")
+            if kind == "on_custom_event" and ev.get("name") == "travelbuddy":
+                data = dict(ev.get("data") or {})
+                if data.get("event") == "delta":
                     streamed_text = True
-                yield chunk
-            elif mode == "messages":
-                msg, meta = chunk
-                if meta.get("langgraph_node") == "compose" and getattr(msg, "content", None):
+                yield data
+            elif kind == "on_chat_model_stream" and "narrative" in (ev.get("tags") or []):
+                chunk = (ev.get("data") or {}).get("chunk")
+                text = getattr(chunk, "content", None)
+                if isinstance(text, str) and text:
                     streamed_text = True
-                    yield {"event": "delta", "text": msg.content}
-            elif mode == "updates":
-                for _node, update in (chunk or {}).items():
-                    if not update:
-                        continue
-                    for key, value in update.items():
-                        acc[key] = merge_dicts(acc.get(key), value) if key == "sections" else value
-        payload = final_payload(acc)
+                    yield {"event": "delta", "text": text}
+
+        snapshot = await travel_graph.aget_state(config)
+        pending = [i for t in (snapshot.tasks or []) for i in (getattr(t, "interrupts", None) or [])]
+        if pending:
+            # Paused at clarify: the client answers, then resumes this thread.
+            yield {"event": "clarification", "thread_id": thread_id, **(pending[0].value or {})}
+            return
+        payload = final_payload(snapshot.values or {})
         if not streamed_text and payload.get("answer"):
             yield {"event": "delta", "text": payload["answer"]}
         yield {"event": "final", **payload}
+        try:
+            await travel_graph.checkpointer.adelete_thread(thread_id)
+        except Exception:
+            pass
 
 
 def _extract_embedded_data(text: str, response: dict) -> None:

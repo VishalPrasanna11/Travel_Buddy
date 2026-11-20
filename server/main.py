@@ -16,6 +16,7 @@ from routes.flightRoute import router as flight_router
 from routes.placesRoute import router as places_router
 from routes.bookingRoute import router as booking_router
 from routes.conversationRoute import router as conversation_router
+from routes.feedbackRoute import router as feedback_router
 from middlewares.errors import RequestIdMiddleware, install_error_handlers
 
 logging.basicConfig(
@@ -84,6 +85,7 @@ app.include_router(flight_router, prefix="/api/flights", tags=["flights"])
 app.include_router(places_router, prefix="/api/places", tags=["places"])
 app.include_router(booking_router, prefix="/api/book", tags=["booking"])
 app.include_router(conversation_router, prefix="/api/conversations", tags=["conversations"])
+app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
 
 
 @app.get("/api/health", tags=["root"])

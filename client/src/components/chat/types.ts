@@ -231,8 +231,32 @@ export type Itinerary = {
   summary?: string
 }
 
+export type ClarificationField = {
+  name: "destination" | "dates" | "origin" | "adults"
+  type: "text" | "choice" | "date_range"
+  label: string
+  placeholder?: string
+  optional?: boolean
+  skip_label?: string
+  options?: { label: string; value?: string; start_date?: string; end_date?: string }[]
+}
+
+export type Clarification = {
+  thread_id: string
+  question: string
+  missing: string[]
+  fields: ClarificationField[]
+  trip?: Partial<Trip>
+  /** Set once the traveler answered (the chips stop being interactive). */
+  answered?: boolean
+}
+
 export type ResponseData = {
   status?: string
+  /** Follow-up chips for this answer. */
+  suggestions?: string[]
+  /** Out of scope: why, in friendly words. */
+  reason?: string
   itinerary?: Itinerary
   location?: string
   trip?: Trip
@@ -291,6 +315,10 @@ export type ChatMessage = {
   requestId?: string
   /** Server message id (for feedback); set once the turn is saved. */
   serverId?: string
+  /** The agent paused to ask for missing details. */
+  clarification?: Clarification
+  /** Thumbs given on this answer. */
+  feedback?: "up" | "down"
 }
 
 // -------------------------------------------------------------- readers

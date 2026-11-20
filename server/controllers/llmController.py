@@ -139,14 +139,28 @@ class LLMController:
         context_is_travel = self._check_chat_history_context(chat_history)
         
         if not is_travel and not context_is_travel:
-            response_text = "I'm your Travel AI Assistant and can only help with travel-related questions. Feel free to ask me about destinations, trip planning, accommodations, or any other travel topics!"
-            await self.save_message(chat_history_controller, chat_id, "assistant", response_text)
-            return {
-                "status": "redirect",
-                "answer": response_text,
-                "model": "filter",
-                "chat_id": chat_id
-            }
+            # Keywords miss plenty of travel questions ("best neighborhoods in Lisbon"),
+            # so ask the structured scope classifier before refusing.
+            decision = None
+            try:
+                from agents.travel_graph import classify_scope
+                decision = await classify_scope(query)
+            except Exception as e:
+                logger.warning(f"Scope classifier unavailable: {e}")
+            if decision is None or not decision.in_scope:
+                response_text = (decision.reason if decision and decision.reason else
+                                 "I'm your Travel AI Assistant and can only help with travel-related questions.")
+                suggestions = (decision.suggestions if decision else []) or [
+                    "Plan a long weekend in Lisbon", "Best neighborhoods to stay in Tokyo", "What's the weather in Rome next week?"]
+                await self.save_message(chat_history_controller, chat_id, "assistant", response_text)
+                return {
+                    "status": "out_of_scope",
+                    "answer": response_text,
+                    "reason": response_text,
+                    "suggestions": suggestions,
+                    "model": "filter",
+                    "chat_id": chat_id
+                }
         
         actual_query = (
             f"{query}. Please provide a brief introduction about yourself as a travel assistant."
