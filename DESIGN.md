@@ -1,109 +1,122 @@
 # DESIGN.md: TravelBuddy
 
-Status: **Phase 1 draft.** This file documents the current system as it is in code (Nov 2026), corrected with the locked brand palette, and flags drift. Final tokens, type scale, components and motion rules get filled in during Phase 2 and Phase 6.
+Status: **Phase 2 (foundations) complete.** Tokens live in `client/src/global.css` (`@theme`). Motion presets live in `client/src/lib/motion.ts`. Surface-level work (landing, chat states, itinerary rendering) comes in Phase 3. See §6 for what is still drifting.
 
 ---
 
 ## 1. Brand palette (LOCKED, source of truth)
 
-These ten hex values do not change. Each one becomes a Tailwind v4 `@theme` token.
+The ten hex values below never change. Each one is a Tailwind v4 `@theme` token. Tailwind's default palette is switched off (`--color-*: initial`), so `gray-500`, `blue-600` and the like generate nothing. Only these tokens exist.
 
-| Token | Role | Name | Hex | As text on white | `#374151` text on it |
-|---|---|---|---|---|---|
-| `--color-raspberry` | Primary | Raspberry | `#AA4465` | 5.64:1 ✅ | 1.83:1 ❌ (use white: 5.64:1 ✅) |
-| `--color-amber` | Secondary / accent | Amber | `#F5A65B` | 2.00:1 ❌ | 5.15:1 ✅ |
-| `--color-teal-blue` | Tertiary | Teal Blue | `#96C3CE` | 1.91:1 ❌ | 5.40:1 ✅ |
-| `--color-leaf-green` | Quaternary | Leaf Green | `#6CAE75` | 2.64:1 ❌ | **3.90:1 ❌** (needs a lighter derived tint behind body text) |
-| `--color-sunshine` | Highlight | Sunshine Yellow | `#FFCF00` | 1.48:1 ❌ | 6.96:1 ✅ |
-| `--color-soft-pink` | Subtle | Soft Pink | `#F4CAE0` | 1.46:1 ❌ | 7.05:1 ✅ |
-| `--color-white` | Background | White | `#FFFFFF` | n/a | 10.31:1 ✅ |
-| `--color-ink` | Foreground | Dark Gray | `#374151` | 10.31:1 ✅ | n/a |
-| `--color-light-gray` | Muted | Light Gray | `#E9E9E9` | 1.21:1 ❌ | 8.49:1 ✅ |
-| `--color-red` | Destructive | Red | `#EF4444` | **3.76:1 ❌** | 2.74:1 ❌ (white on it: 3.76:1 ❌) |
+| Token (`bg-*`, `text-*`, …) | Role | Hex | As text on white | `#374151` text on it |
+|---|---|---|---|---|
+| `raspberry` | Primary | `#AA4465` | 5.64:1 ✅ | 1.83 ❌ (use white: 5.64 ✅) |
+| `amber` | Secondary / accent | `#F5A65B` | 2.00 ❌ | 5.15 ✅ |
+| `teal-blue` | Tertiary | `#96C3CE` | 1.91 ❌ | 5.40 ✅ |
+| `leaf-green` | Quaternary | `#6CAE75` | 2.64 ❌ | **3.90 ❌** |
+| `sunshine-yellow` | Highlight | `#FFCF00` | 1.48 ❌ | 6.96 ✅ |
+| `soft-pink` | Subtle | `#F4CAE0` | 1.46 ❌ | 7.05 ✅ |
+| `white` | Background | `#FFFFFF` | n/a | 10.31 ✅ |
+| `ink` | Foreground | `#374151` | 10.31 ✅ | n/a |
+| `light-gray` | Muted | `#E9E9E9` | 1.21 ❌ | 8.49 ✅ |
+| `red` | Destructive | `#EF4444` | **3.76 ❌** | 2.74 ❌ |
 
 Rules:
-- Only Raspberry and Dark Gray may be used as text on white. Every other brand color is a fill, border, icon, or chart color.
-- When text sits on Amber, Teal Blue, Sunshine Yellow, Soft Pink or Light Gray, it is `#374151`.
-- Leaf Green and Red cannot carry readable text in either direction at AA. They need derived tokens (below).
-- No gradient text. No decorative radial halos or blurred glows. No purple/blue gradients, neon, beige or cream.
+- Only `raspberry` and `ink` are text colors on white. All other brand colors are fills, borders, icons or chart colors.
+- Text on Amber, Teal Blue, Sunshine Yellow, Soft Pink or Light Gray is `ink`.
+- Leaf Green and Red never carry text. Use their derived tint or ink tokens.
+- No gradient text, decorative halos, blurred glows, purple/blue gradients, neon, beige or cream.
 
-### Palette roles (proposed, confirm before Phase 2)
-| Color | Job |
-|---|---|
-| Raspberry | Primary buttons, links, focus rings, selected states, active nav. The only "act here" color. |
-| Amber | Secondary accent. **Hotels / stays** (icon, card accent, chip fill). |
-| Teal Blue | **Flights** (icon, route line, chip fill). |
-| Leaf Green | **Confirmations and live data**: success toasts, "live weather" marker, good-weather icon. |
-| Sunshine Yellow | **Attention, used sparingly**: the "Estimate" label on simulated weather, warnings. Fill only. |
-| Soft Pink | **Subtle surfaces**: user message bubble, selected sidebar row, hover wash on primary-adjacent elements. |
-| Light Gray | Borders, dividers, input outlines, skeletons. |
-| Red | Destructive actions and errors, via the derived accessible shade. |
-| Attractions, restaurants | Neutral cards with a Raspberry icon. They are the main itinerary content, so they get no extra hue. |
+## 2. Derived tokens (oklch, from the locked hue)
 
-### Derived tokens (to be finalized in Phase 2, in oklch)
-Each one is derived from a locked color and documented here. Targets:
+| Token | From | oklch | ≈ hex | Use | Contrast |
+|---|---|---|---|---|---|
+| `raspberry-hover` | Raspberry | 0.48 0.137 2.8 | `#993456` | primary hover | white 7.05 |
+| `raspberry-pressed` | Raspberry | 0.43 0.137 2.8 | `#882449` | primary active | white 8.77 |
+| `raspberry-tint` | Raspberry | 0.965 0.025 2.8 | `#FFEDF2` | selected/hover wash (`accent`) | ink 9.15, raspberry 5.01 |
+| `ink-muted` | Dark Gray | 0.50 0.024 259.7 | `#5B6472` | secondary text, metadata, placeholders (`muted-foreground`) | 5.98 on white, 4.93 on Light Gray |
+| `gray-sunken` | Light Gray | 0.975 0 0 | `#F7F7F7` | quiet surfaces (`muted`) | ink 9.62 |
+| `gray-strong` | Light Gray | 0.82 0 0 | `#C4C4C4` | control borders (`input`), non-text | n/a |
+| `leaf-tint` | Leaf Green | 0.93 0.037 147.6 | `#D8EFDA` | success surface | ink 8.48 |
+| `leaf-ink` | Leaf Green | 0.50 0.096 147.6 | `#397242` | success icon/text | 5.74 on white |
+| `red-ink` | Red | 0.52 0.177 25.3 | `#B92D2F` | error text, destructive fill (`destructive`) | 6.04 both ways with white |
+| `red-tint` | Red | 0.96 0.025 25.3 | `#FFECE9` | error surface | ink 9.04, red-ink 5.77 |
+| `amber-tint` / `amber-ink` | Amber | 0.94 0.039 62.5 / 0.50 0.104 62.5 | `#FFE6D1` / `#8C5416` | stay chip / stay icon | ink 8.59 / 6.19 on white |
+| `teal-tint` / `teal-ink` | Teal Blue | 0.95 0.020 214.4 / 0.48 0.040 214.4 | `#E0F2F7` / `#43646C` | flight chip / flight icon | ink 8.94 / 6.41 on white |
+| `sunshine-tint` | Sunshine | 0.96 0.062 91.8 | `#FFF1C3` | "Estimate" surface | ink 9.14 |
 
-| Token | Derived from | Purpose | Target |
-|---|---|---|---|
-| `--color-raspberry-hover` | Raspberry, darker in oklch L | Primary hover | white text ≥ 4.5:1 |
-| `--color-raspberry-pressed` | Raspberry, darker still | Primary active | white text ≥ 4.5:1 |
-| `--color-raspberry-tint` | Raspberry, very light | Selected row, subtle focus wash | `#374151` ≥ 4.5:1 |
-| `--color-ink-muted` | Dark Gray, lighter | Secondary text, metadata, placeholders | ≥ 4.5:1 on white **and** on Light Gray |
-| `--color-leaf-tint` | Leaf Green, lighter | Success surface behind text | `#374151` ≥ 4.5:1 |
-| `--color-leaf-ink` | Leaf Green, darker | Success icon or text where needed | ≥ 4.5:1 on white |
-| `--color-red-ink` | Red, darker | Error text, destructive button fill with white text | ≥ 4.5:1 |
-| `--color-red-tint` | Red, very light | Error surface | `#374151` ≥ 4.5:1 |
-| `--color-amber-tint`, `--color-teal-tint`, `--color-sunshine-tint` | respective color, lighter | Category chips and cards | `#374151` ≥ 4.5:1 |
+## 3. Palette roles
 
----
+| Color | Job | Semantic tokens |
+|---|---|---|
+| Raspberry | The only "act here" color: primary buttons, links, focus ring, selected state, assistant mark, attraction pins | `primary`, `ring`, `sidebar-primary` |
+| Amber | Secondary accent. **Hotels / stays.** Secondary button fill. | `secondary`, `stay`, `stay-tint`, `stay-ink` |
+| Teal Blue | **Flights** | `flight`, `flight-tint`, `flight-ink` |
+| Leaf Green | **Confirmations and live data** | `success`, `success-tint`, `success-ink` |
+| Sunshine Yellow | **Estimates and warnings** (simulated weather label). Fill only, sparingly. | `estimate`, `estimate-tint` |
+| Soft Pink | **Subtle surfaces**: user message bubble, text selection | (raw) `soft-pink` |
+| Light Gray | Borders, dividers | `border` |
+| Red | Errors and destructive actions via `red-ink` / `red-tint` | `destructive`, `danger-tint` |
+| Ink | Body text; restaurant pins on the map | `foreground` |
+| Attractions, restaurants | Neutral cards with a Raspberry icon | |
 
-## 2. Current state in code (as found)
+Map pins: attractions `#AA4465`, hotels `#F5A65B`, restaurants `#374151`.
 
-### Color
-- Tokens live in `client/src/global.css` as shadcn-style CSS variables (`--primary`, `--secondary`, …) mapped through `@theme inline`. The locked hexes are present and correct in `:root`.
-- ~350 lines of hand-written utilities (`.bg-raspberry`, `.bg-raspberry\/10`, gradient helpers, `.animate-pulse`, `.scale-110`, `.blur-lg`, `.font-sans`) duplicate what Tailwind v4 generates from `@theme`. Several override Tailwind's own utilities with v3 syntax (`--tw-scale-x` etc.).
-- **Drift:**
-  - `--muted-foreground: #9ca3af` is not a brand color and fails contrast (2.54:1 on white, 2.1:1 on Light Gray). It is used for all secondary text.
-  - `.dark` block redefines brand colors to new hexes (`#c25a7b`, `#ffb76e`, `#a8d4df`, …). Nothing toggles dark mode, so it is dead, but it contradicts the locked palette.
-  - Stray Tailwind colors in components: `text-gray-*` (≈35), `bg-black` / `text-black` (13), `text-blue-*`, `bg-blue-50`, `border-blue-100` (weather card), `text-red-500`, `text-green-500`, `text-orange-500`, `bg-orange-600` (user avatar), `to-indigo-50`, `text-yellow-500`.
-  - Raw hex in TSX: `#d1d5db`, `#9CA3AF`, `#4B5563`, `#333`.
-  - Footer is `bg-black` with the default `#374151` heading on it (2.04:1).
-  - `.text-amber`, `.text-teal-blue`, `.text-leaf-green` utilities exist and are used as text (fail AA).
+## 4. Type
 
-### Typography
-- Inter from Google Fonts, 300–700 (flagged by `impeccable detect` as overused). Loaded via CSS `@import` (render-blocking).
-- No type scale. Sizes in use: `text-xs` 16×, `text-sm` 51×, `text-base` 2×, `text-lg` 6×, `text-xl` 21×, `text-2xl` 4×, `text-3xl` 11×, `text-4xl` 8×, `text-5xl` 1×, `text-6xl` 4×.
-- Chat body text is `text-sm` (14px). Should be ~16px with 1.5 line-height and a 65–75ch measure.
-- Weights drift between `font-medium` and `font-bold` for the same role (logo is `font-medium` in the header and `font-bold` in the sidebar).
-- `.text-balance` and `.text-pretty` are defined but not used on headings or paragraphs.
+- **Display:** Bricolage Grotesque, 500–700, optical sizing on (`font-display`, applied to h1–h4). Warm, slightly quirky grotesque; gives headings a voice without shouting.
+- **Text:** Atkinson Hyperlegible Next, 400–700 (`font-sans`, body). Built for legibility. Its distinct numerals (slashed zero, open 1/l/I) help with flight codes, times and prices on phones.
+- **Mono:** Atkinson Hyperlegible Mono (`font-mono`, code blocks).
+- Loaded from Google Fonts with `preconnect` in `index.html` (no render-blocking CSS `@import`).
 
-### Radius
-- `--radius: 0.5rem` with sm/md/lg/xl derived. In use: `rounded-full` 30×, `rounded-lg` 14×, `rounded-md` 8×, `rounded-3xl` 4×, `rounded-xl` 3×, plus `rounded`, `rounded-l`, `rounded-r`. Buttons are pill in the sidebar and `rounded-md` elsewhere.
+| Token | Size / line-height | Use |
+|---|---|---|
+| `text-display` | clamp(36→44px) / 1.1, −0.02em | page hero (max one per page) |
+| `text-title` | 24 / 32, −0.01em | section / page titles |
+| `text-heading` | 18 / 24 | card and day headings |
+| `text-body` (= `text-base`) | 16 / 24 | body, chat answers |
+| `text-sm` | 14 / 20 | secondary UI text |
+| `text-meta` (= `text-xs`) | 13 / 18 | prices, times, ratings, captions (use `.tabular`) |
 
-### Spacing and layout
-- No spacing rhythm. `container mx-auto py-6` wraps every page inside `Layout`, so full-bleed sections (landing hero, footer) are boxed, and the chat page gets extra padding inside a fixed-height split.
-- Heights use `h-screen` and `calc(100vh-64px)` (breaks with mobile browser chrome and on-screen keyboard). No `dvh`/`svh`, no safe-area insets.
+Legacy `text-4xl`–`text-6xl` are capped at 44px, so no oversized heroes.
+Headings get `text-wrap: balance`; paragraphs and list items get `text-wrap: pretty`.
+Answers use a reading width of `max-w-prose` (68ch).
+`time`, `data` and `.tabular` use tabular numerals.
 
-### Shadows
-- `shadow-sm`, `shadow-md`, `shadow-lg`, `shadow-xl` mixed with no scale. Blurred gradient glow behind the landing preview card.
+## 5. Space, radius, shadow, motion
 
-### Motion
-- Framer Motion entrance on almost every landing element (0.5s, staggered), with reveal-on-scroll that **leaves 65% of landing text at opacity 0** (detector: `content-hidden-at-rest`).
-- Endless `animate-pulse` on decorative elements, `animate-bounce` scroll hint, bouncing typing dots (`@keyframes bounce` defined twice). No `prefers-reduced-motion` handling anywhere.
+- **Spacing:** Tailwind 4px base. Named: `gutter` 16px (phone side padding), `gutter-lg` 32px, `section` clamp(56→96px), `header` 64px.
+- **Radius:** `rounded-control` 10px (buttons, inputs), `rounded-surface` 16px (cards, panels), `rounded-full` (pills, avatars, chips). Legacy `rounded-3xl` is capped at 20px.
+- **Shadow:** two real levels, both ink-tinted. `shadow-raised` (= `shadow-sm`) for resting surfaces, `shadow-overlay` (= `shadow-lg`) for popovers and floating panels. `shadow-xl` and `shadow-2xl` collapse to overlay. Cards are border-only by default.
+- **Motion:**
+  - Durations: fast 150ms (hover, press), base 200ms (UI changes), slow 280ms (layout shifts).
+  - Easing: `ease-out` (quart) for routine UI, `ease-out-expo` for larger moves, `ease-in` for exits. No bounce or elastic.
+  - Keyframes: `animate-fade-in`, `animate-rise-in`, `animate-breathe` (opacity only, for waiting indicators).
+  - `prefers-reduced-motion: reduce` collapses all CSS animations and transitions to 1ms globally.
+  - Framer Motion uses `transition.fast/base/slow` from `lib/motion.ts`.
+- **Focus:** one style everywhere: 2px Raspberry outline, 2px offset (`:focus-visible`). Inputs add a 2px Raspberry ring at 25%.
+- **Touch:** buttons and inputs grow to 44px on coarse pointers (`pointer-coarse:`).
 
-### Components (current)
-- shadcn/ui "new-york" primitives in `components/ui/` (button, card, badge, tabs, sheet, sidebar, dropdown, tooltip, popover, calendar, etc.).
-- Two parallel chat stacks:
-  - `components/ChatComponent.tsx` (live, used by `/chat/:id`): hand-rolled regex markdown → `dangerouslySetInnerHTML`.
-  - `components/ui/chat.tsx` + `message-list` + `chat-message` + `markdown-renderer` (react-markdown + Shiki): used only by `/chatmaps` and the unrouted `ChatPage`.
-- Duplicate files: `pages/ChatMapsPage 2.tsx`, `types/geocodingService 2.ts`, `types/locationUtils 2.ts`.
+## 6. Components (shared)
 
----
+| Component | File | Variants / notes |
+|---|---|---|
+| Button | `ui/button.tsx` | `default` (Raspberry, one per view), `secondary` (Amber), `outline`, `ghost`, `destructive` (red-ink), `link`. Sizes `sm`/`default`/`lg`/`icon`. |
+| Badge / Chip | `ui/badge.tsx` | `default`, `secondary`, `outline`, `neutral`, `destructive`, plus category chips `flight`, `stay`, `success`, `estimate`, `subtle`. Text is always ink or white. |
+| Input | `ui/input.tsx` | 16px text on phones (no iOS zoom), `gray-strong` border, Raspberry focus. |
+| Card | `ui/card.tsx` | Bordered `rounded-surface`, no shadow. Never nest cards. |
+| Notice | `ui/notice.tsx` | `info`, `error` (role=alert), `success`, `estimate`. Title + description + actions (Retry / Edit query / New trip). |
+| EmptyState | `ui/empty-state.tsx` | Icon in a Raspberry tint, title, description, actions; heading level is configurable. |
+| MessageRow | `ui/message-row.tsx` | `user`: right-aligned Soft Pink bubble. `assistant`: full reading width with the TravelBuddy mark, no bubble. Includes screen-reader speaker labels. |
+| App shell | `layouts/layout.tsx` | `variant="page"` (document scroll) or `"app"` (`h-dvh` workspace; panes scroll). Skip link, single `<main>`. Sidebar is a drawer on mobile; inert when collapsed on desktop. |
 
-## 3. To be defined in Phase 2
-- Type: new families (display + text), scale, line-heights, measure.
-- Spacing scale and section rhythm.
-- Radius scale (one for controls, one for surfaces, one for pills).
-- Shadow scale (two levels at most).
-- Motion tokens: durations (fast 150ms, base 200ms, slow 250–300ms), easing (ease-out quart/expo), reduced-motion policy.
-- Component variants: Button, Chip, Card (Flight, Hotel, Place), MessageBubble, EmptyState, ErrorBlock, AgentProgress.
+Planned for Phase 3, built against real response fields: FlightSummary, HotelSummary, PlaceCard (photo), DaySection, AgentProgress.
+
+## 7. Still drifting (tracked for later phases)
+- Landing and home content: pill badge above the headline, colored keyword in the headline, gradient washes, a side-tab border (`LandingPage.tsx:115`), a nested card, skipped heading levels, fake stats and testimonials. **Phase 3.**
+- `Hero.tsx` bounce scroll hint and pulse circles; Steps pulse glow. **Phase 3/4.**
+- The map "Detected Locations" panel uses side-tab borders. **Phase 3.**
+- `WeatherDisplay` structure (duplicate content, no estimate label). **Phase 3.**
+- Mixed `font-medium` vs `font-semibold` on headings in older pages. **Phase 3, as surfaces are rebuilt.**
+- Dark mode: none. The old `.dark` block with altered brand hexes was removed. `dark:` utilities are inert.
+- Bundle: entry JS 436 KB gzip (unchanged). Shiki still ships every grammar. **Phase 5.**
