@@ -16,7 +16,7 @@ function HeaderLogo({ hidden }: { hidden: boolean }) {
         <Link
             to={isAuthenticated ? "/home" : "/"}
             className={cn(
-                "font-display text-lg font-semibold tracking-tight text-foreground rounded-md",
+                "inline-flex min-h-11 items-center font-display text-lg font-semibold tracking-tight text-foreground rounded-md",
                 hidden && "md:hidden"
             )}
         >
