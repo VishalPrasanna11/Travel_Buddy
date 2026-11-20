@@ -1,60 +1,58 @@
-import { Link } from "react-router-dom";
-import { MessageSquare, Search, BookmarkIcon, Bell, Lightbulb, Plus, LogIn, Menu } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { LogIn, Plus } from "lucide-react";
 import { useAuth0 } from "@auth0/auth0-react";
+import { v4 as uuidv4 } from "uuid";
+
 import { UsernameMenu } from "./UsernameMenu";
 import MenuItem from "./MenuItem";
-import { buttonVariants } from "./ui/button";
-import {v4 as uuidv4} from "uuid";
-
+import { TripHistory } from "./TripHistory";
+import { Button } from "./ui/button";
+import { useSidebar } from "./ui/sidebar";
 
 export function AppSidebar() {
     const { isAuthenticated, loginWithRedirect, user } = useAuth0();
-    
-    const generateUniqueId = () => {
-        return uuidv4();
+    const navigate = useNavigate();
+    const { isMobile, setOpenMobile } = useSidebar();
+
+    const newTrip = () => {
+        if (isMobile) setOpenMobile(false);
+        navigate(`/chat/${uuidv4()}`, { viewTransition: true });
     };
+
     return (
         <div className="flex h-full min-h-0 flex-col">
-            {/* Logo at top */}
             <div className="flex h-header shrink-0 items-center border-b px-4">
-                <Link to="/home" className="font-display text-lg font-semibold tracking-tight rounded-md">
+                <Link to="/home" viewTransition className="inline-flex min-h-11 items-center font-display text-lg font-semibold tracking-tight rounded-md">
                     TravelBuddy
                 </Link>
             </div>
-            
-            {/* Navigation items */}
-            <MenuItem />
-            
-            {/* New chat button */}
-            <div className="p-4">
-                <Link
-                    to={`/chat/${generateUniqueId()}`}
-                    className={buttonVariants({ variant: "outline", className: "w-full" })}
-                >
+
+            <div className="px-3 pt-3">
+                <Button className="w-full" onClick={newTrip}>
                     <Plus aria-hidden="true" />
-                    New chat
-                </Link>
-</div>
-            
-            {/* User profile or login button at bottom - fixed position */}
-            <div className="mt-auto p-4 border-t">
+                    New trip
+                </Button>
+            </div>
+
+            <TripHistory />
+
+            <div className="border-t">
+                <MenuItem />
+            </div>
+
+            <div className="border-t p-2">
                 {isAuthenticated && user ? (
                     <UsernameMenu user={{
-                        name: user.name || user.nickname || 'User',
-                        email: user.email || 'No email provided'
+                        name: user.name || user.nickname || "Traveler",
+                        email: user.email || ""
                     }}/>
                 ) : (
-                    <button 
-                        onClick={() => loginWithRedirect()}
-                        className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-raspberry-hover flex items-center justify-center"
-                    >
-                        <LogIn className="mr-2 h-4 w-4" />
-                        Log In
-                    </button>
+                    <Button variant="outline" className="w-full" onClick={() => loginWithRedirect()}>
+                        <LogIn aria-hidden="true" />
+                        Log in
+                    </Button>
                 )}
             </div>
-            
-       
         </div>
     );
 }

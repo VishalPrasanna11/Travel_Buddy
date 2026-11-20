@@ -1,365 +1,240 @@
-import { useState, useEffect, ChangeEvent, useCallback } from 'react';
-import { v4 as uuidv4 } from "uuid";
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef, ChangeEvent } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { useAuth0 } from '@auth0/auth0-react';
 
-// Import your Travel AI API
-import { useAskTravelQuestion } from '@/api/LLMApi';
-import type { TravelResponse } from '@/types';
+import { askTravelQuestion, AskError, type TravelResponse } from '@/api/LLMApi';
+import { chatDb, type Conversation } from '@/db/indexedDb';
+import { useLocation as useMapLocations, type Location } from '@/components/LocationContext';
+import { attractionsOf, type ChatMessage, type ResponseData } from '@/components/chat/types';
 
-// Import the database
-import { chatDb, Conversation } from '@/db/indexedDb';
-import { type Message } from '@/components/ui/chat-message';
-import { useLocation, Location } from '@/components/LocationContext';
+const NEW_TITLE = 'New trip';
+const DATA_KEYS = ['status', 'location', 'restaurants', 'attractions', 'attractions_list', 'hotels', 'flights', 'weather'] as const;
 
-// Type for API messages
-type ApiMessage = {
-  role: string;
-  content: string;
-};
+/** Keep only the structured fields we render; never the raw blob. */
+function pickData(response: TravelResponse): ResponseData | undefined {
+  const data: Record<string, unknown> = {};
+  for (const key of DATA_KEYS) {
+    if (response[key] !== undefined && response[key] !== null) data[key] = response[key];
+  }
+  return Object.keys(data).length ? (data as ResponseData) : undefined;
+}
 
-export function useChat(conversationId: string = uuidv4()) {
-  const [messages, setMessages] = useState<Message[]>([]);
+/** Map pins from returned coordinates only. */
+export function locationsFromData(data?: ResponseData): Location[] {
+  if (!data) return [];
+  const out: Location[] = [];
+  for (const a of attractionsOf(data)) {
+    if (a.location?.lat != null && a.location?.lng != null) {
+      out.push({ name: a.name, lat: a.location.lat, lng: a.location.lng, type: 'primary', formattedAddress: a.address });
+    }
+  }
+  for (const h of data.hotels?.data ?? []) {
+    if (h.geoCode?.latitude != null && h.geoCode?.longitude != null) {
+      out.push({ name: h.name, lat: h.geoCode.latitude, lng: h.geoCode.longitude, type: 'secondary', relevanceScore: 90 });
+    }
+  }
+  for (const r of data.restaurants ?? []) {
+    if (r.location?.lat != null && r.location?.lng != null) {
+      out.push({ name: r.name, lat: r.location.lat, lng: r.location.lng, type: 'reference', formattedAddress: r.address });
+    }
+  }
+  return out;
+}
+
+function titleFrom(text: string) {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  return clean.length > 48 ? `${clean.slice(0, 47).trimEnd()}…` : clean || NEW_TITLE;
+}
+
+/** History sent to the model: real turns only, never our error placeholders. */
+function historyFor(msgs: ChatMessage[]) {
+  return msgs
+    .filter((m) => m.status !== 'error' && m.content)
+    .slice(-10)
+    .map((m) => ({ role: m.role, content: m.content }));
+}
+
+export type ChatStatus = 'loading' | 'idle' | 'pending';
+
+export function useChat(conversationId: string) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [conversationTitle, setConversationTitle] = useState('New Conversation');
-  const [lastResponse, setLastResponse] = useState<TravelResponse | null>(null);
-  
-  const navigate = useNavigate();
-  
-  // Get user from Auth0
+  const [status, setStatus] = useState<ChatStatus>('loading');
+  const [pendingSince, setPendingSince] = useState<number | null>(null);
+
   const { user } = useAuth0();
-  
-  // Get location context
-  const { addDetectedLocations, clearDetectedLocations } = useLocation();
-  
-  // Use your Travel AI hook
-  const { askQuestion, isLoading } = useAskTravelQuestion();
-  
-  // Load conversation from IndexedDB when component mounts
+  const { addDetectedLocations, clearDetectedLocations } = useMapLocations();
+
+  // Refs guard against double submits and stale async results.
+  const inFlight = useRef(false);
+  const loadedId = useRef<string | null>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const conversationRef = useRef<Pick<Conversation, 'title' | 'created_at' | 'customTitle'>>({ title: NEW_TITLE, created_at: Date.now() });
+
+  messagesRef.current = messages;
+
+  // Load (or create) the conversation whenever the id changes.
   useEffect(() => {
-    const loadConversation = async () => {
-      await chatDb.init();
-      
-      if (conversationId) {
-        const savedConversation = await chatDb.getConversation(conversationId);
-        
-        if (savedConversation) {
-          setMessages(savedConversation.messages);
-          setConversationTitle(savedConversation.title);
-        } else {
-          const newConversation: Conversation = {
-            id: conversationId,
-            title: 'New Conversation',
-            created_at: Date.now(),
-            updated_at: Date.now(),
-            messages: []
-          };
-          
-          await chatDb.saveConversation(newConversation);
-        }
-      }
-    };
-    
-    loadConversation();
-  }, [conversationId]);
-  
-  useEffect(() => {
-    const saveMessages = async () => {
-      if (messages.length > 0 && conversationId) {
-        const existingConversation = await chatDb.getConversation(conversationId);
-        
-        let title = conversationTitle;
-        if (messages.length > 0 && messages[0].role === 'user' && title === 'New Conversation') {
-          title = messages[0].content.slice(0, 30) + (messages[0].content.length > 30 ? '...' : '');
-          setConversationTitle(title);
-        }
-        
-        const conversation: Conversation = {
-          id: conversationId,
-          title: title,
-          created_at: existingConversation?.created_at || Date.now(),
-          updated_at: Date.now(),
-          messages: messages
-        };
-        
-        await chatDb.saveConversation(conversation);
-      }
-    };
-    
-    // Only save if we have messages
-    if (messages.length > 0) {
-      saveMessages();
-    }
-  }, [messages, conversationId, conversationTitle]);
-  
-  // Process the last API response to extract location data
-  useEffect(() => {
-    if (lastResponse) {
-      processResponseForLocations(lastResponse);
-    }
-  }, [lastResponse]);
-  
-  // Function to process API response and extract locations
-  const processResponseForLocations = useCallback((response: TravelResponse) => {
-    try {
-      const locations: Location[] = [];
-      // Add this to the beginning of processResponseForLocations
-// console.log("Full API response structure:", JSON.stringify(response, null, 2));
-// console.log("attractions_list structure:", 
-  // response.attractions_list ? JSON.stringify(response.attractions_list, null, 2) : "undefined");
-      // console.log("Response",response.attractions)
-      // Process attractions
-      if (response.attractions && Array.isArray(response.attractions)) {
-        response.attractions.forEach((attraction: any) => {
-          if (attraction.location?.lat && attraction.location?.lng) {
-            // console.log("Attraction",attraction)
-            locations.push({
-              name: attraction.name,
-              lat: attraction.location.lat,
-              lng: attraction.location.lng,
-              // address: attraction.address,
-              // rating: attraction.rating,
-              // photo_url: attraction.photo_url,
-              // total_ratings: attraction.total_ratings,
-              // types: attraction.types,
-              type: 'primary' // Set attractions as primary pins
-            });
-          }
-        });
-      }
-      if (response.attractions?.attractions_list?.attractions && 
-        Array.isArray(response.attractions.attractions_list.attractions)) {
-      
-      // console.log("Found attractions at correct path with", 
-        // response.attractions.attractions_list.attractions.length, "items");
-      
-      response.attractions.attractions_list.attractions.forEach((attraction: any) => {
-        if (attraction.location?.lat && attraction.location?.lng) {
-          // console.log("Adding attraction to locations:", attraction.name);
-          
-          locations.push({
-            name: attraction.name,
-            lat: attraction.location.lat,
-            lng: attraction.location.lng,
-            type: 'primary'
-          });
-        }
-      });
-    }
-      // Process attractions_list structure
-      if (response.attractions_list?.attractions && Array.isArray(response.attractions_list.attractions)) {
-        response.attractions_list.attractions.forEach((attraction: any) => {
-          if (attraction.location?.lat && attraction.location?.lng) {
-            // console.log("Attraction",attraction)
-            locations.push({
-              name: attraction.name,
-              lat: attraction.location.lat,
-              lng: attraction.location.lng,
-              // address: attraction.address,
-              // rating: attraction.rating,
-              // photo_url: attraction.photo_url,
-              // total_ratings: attraction.total_ratings,
-              // types: attraction.types,
-              type: 'primary'
-            });
-          }
-        });
-      }
-      
-      // Process hotels
-      if (response.hotels?.data && Array.isArray(response.hotels.data)) {
-        response.hotels.data.forEach((hotel) => {
-          if (hotel.geoCode?.latitude && hotel.geoCode?.longitude) {
-            // console.log("Hotel", hotel.name);
-            locations.push({
-              name: hotel.name,
-              lat: hotel.geoCode.latitude,
-              lng: hotel.geoCode.longitude,
-              // address: hotel.address?.countryCode || "",
-              type: 'secondary', // Set hotels as secondary pins
-              relevanceScore: 90
-            });
-          }
-        });
-      }
-      
-      // Process restaurants
-      if (response.restaurants && Array.isArray(response.restaurants)) {
-        response.restaurants.forEach((restaurant: any) => {
-          if (restaurant.location?.lat && restaurant.location?.lng) {
-            locations.push({
-              name: restaurant.name,
-              lat: restaurant.location.lat,
-              lng: restaurant.location.lng,
-              // address: restaurant.address,
-              // rating: restaurant.rating,
-              // photo_url: restaurant.photo_url,
-              // total_ratings: restaurant.total_ratings,
-              // types: restaurant.types,
-              type: 'reference' // Set restaurants as reference pins
-            });
-          }
-        });
-      }
-      
-      if (locations.length > 0) {
-        console.log("Found locations in API response:", locations);
-        addDetectedLocations(locations);
-      }
-    } catch (err) {
-      console.error("Error processing API response for locations:", err);
-    }
-  }, [addDetectedLocations]);
-  
-  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-  };
-  
-  // Convert our UI messages to API message format
-  const formatMessagesForAPI = (msgs: Message[]): ApiMessage[] => {
-    // Only include the last 10 messages to avoid making the payload too large
-    const recentMessages = msgs.slice(-10);
-    
-    return recentMessages.map(msg => ({
-      // Make sure role is one that OpenAI accepts
-      role: msg.role === 'user' || msg.role === 'assistant' ? msg.role : 'user',
-      content: msg.content
-    }));
-  };
-  
-  const handleSubmit = async (
-    event?: { preventDefault?: () => void },
-    options?: { experimental_attachments?: FileList }
-  ) => {
-    event?.preventDefault?.();
-    
-    if (!input.trim()) return;
-    
-    // Create user message
-    const userMessage: Message = {
-      id: uuidv4(),
-      role: "user",
-      content: input,
-      createdAt: new Date()
-    };
-    
-    // Update UI immediately
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
-    setInput('');
-    setIsTyping(true);
-    
-    try {
-      // Format messages for API and send request
-      const formattedMessages = formatMessagesForAPI(messages);
-      
-      // console.log("Sending chat history:", formattedMessages);
-      
-      const response: TravelResponse = await askQuestion({ 
-        query: userMessage.content,
-        chat_history: formattedMessages,
-        chat_id: conversationId,
-        user_email: user?.email
-      });
-      
-      // Store the full response for location processing
-      setLastResponse(response);
-      
-      // Create assistant message from response
-      const assistantMessage: Message = {
-        id: uuidv4(),
-        role: "assistant",
-        content: response.answer,
-        createdAt: new Date()
-      };
-      
-      // Update messages with assistant response
-      setMessages([...updatedMessages, assistantMessage]);
-    } catch (error) {
-      console.error("Error submitting message:", error);
-      // Handle error
-      const errorMessage: Message = {
-        id: uuidv4(),
-        role: "assistant",
-        content: "Sorry, I couldn't process your request. Please try again.",
-        createdAt: new Date()
-      };
-      
-      setMessages([...updatedMessages, errorMessage]);
-    } finally {
-      setIsTyping(false);
-    }
-  };
-  
-  const append = async (message: {role: string, content: string}) => {
-    const newMessage: Message = {
-      id: uuidv4(),
-      role: message.role as "user" | "assistant",
-      content: message.content,
-      createdAt: new Date()
-    };
-    
-    const updatedMessages = [...messages, newMessage];
-    setMessages(updatedMessages);
-    
-    if (message.role === "user") {
-      setIsTyping(true);
-      
-      // Format messages for API
-      const formattedMessages = formatMessagesForAPI(messages);
-      
-      try {
-        const response: TravelResponse = await askQuestion({ 
-          query: message.content,
-          chat_history: formattedMessages,
-          chat_id: conversationId,
-          user_email: user?.email
-        });
-        
-        // Store the full response for location processing
-        setLastResponse(response);
-        
-        const assistantMessage: Message = {
-          id: uuidv4(),
-          role: "assistant",
-          content: response.answer,
-          createdAt: new Date()
-        };
-        
-        setMessages([...updatedMessages, assistantMessage]);
-      } catch (error) {
-        console.error("Error appending message:", error);
-        const errorMessage: Message = {
-          id: uuidv4(),
-          role: "assistant",
-          content: "Sorry, I couldn't process your request. Please try again.",
-          createdAt: new Date()
-        };
-        
-        setMessages([...updatedMessages, errorMessage]);
-      } finally {
-        setIsTyping(false);
-      }
-    }
-  };
-  
-  // Function to clear conversation and locations
-  const resetChat = useCallback(() => {
+    let cancelled = false;
+    abortRef.current?.abort();
+    inFlight.current = false;
+    loadedId.current = null;
+    setStatus('loading');
+    setPendingSince(null);
     setMessages([]);
     setInput('');
-    setLastResponse(null);
     clearDetectedLocations();
-  }, [clearDetectedLocations]);
-  
+
+    (async () => {
+      try {
+        await chatDb.init();
+        const saved = await chatDb.getConversation(conversationId);
+        if (cancelled) return;
+        if (saved) {
+          conversationRef.current = { title: saved.title, created_at: saved.created_at, customTitle: saved.customTitle };
+          setMessages(saved.messages ?? []);
+          const pins = (saved.messages ?? []).flatMap((m) => locationsFromData(m.data));
+          if (pins.length) addDetectedLocations(pins);
+        } else {
+          conversationRef.current = { title: NEW_TITLE, created_at: Date.now() };
+        }
+      } catch (err) {
+        console.error('Could not load conversation', err);
+      } finally {
+        if (!cancelled) {
+          loadedId.current = conversationId;
+          setStatus('idle');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      abortRef.current?.abort();
+    };
+  }, [conversationId, addDetectedLocations, clearDetectedLocations]);
+
+  // Persist after every change, but only once this conversation has loaded.
+  useEffect(() => {
+    if (loadedId.current !== conversationId || messages.length === 0) return;
+    const meta = conversationRef.current;
+    const firstUser = messages.find((m) => m.role === 'user');
+    const title = meta.customTitle ? meta.title : meta.title === NEW_TITLE && firstUser ? titleFrom(firstUser.content) : meta.title;
+    conversationRef.current = { ...meta, title };
+    chatDb
+      .saveConversation({ id: conversationId, title, created_at: meta.created_at, updated_at: Date.now(), messages, customTitle: meta.customTitle })
+      .catch((err) => console.error('Could not save conversation', err));
+  }, [messages, conversationId]);
+
+  const ask = useCallback(
+    async (userMessage: ChatMessage, prior: ChatMessage[]) => {
+      const forId = conversationId;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      inFlight.current = true;
+      setStatus('pending');
+      setPendingSince(Date.now());
+
+      try {
+        const response = await askTravelQuestion(
+          { query: userMessage.content, chat_history: historyFor(prior), chat_id: forId, user_email: user?.email },
+          { signal: controller.signal }
+        );
+        if (controller.signal.aborted || loadedId.current !== forId) return;
+        const data = pickData(response);
+        const reply: ChatMessage = { id: uuidv4(), role: 'assistant', content: response.answer ?? '', createdAt: new Date(), data };
+        setMessages((prev) => [...prev, reply]);
+        const pins = locationsFromData(data);
+        if (pins.length) addDetectedLocations(pins);
+      } catch (err) {
+        if (controller.signal.aborted || loadedId.current !== forId) return;
+        const e = err instanceof AskError ? err : new AskError('network', 'Something went wrong while asking.');
+        console.error('Ask failed', err);
+        setMessages((prev) => [
+          ...prev,
+          { id: uuidv4(), role: 'assistant', content: '', status: 'error', error: { kind: e.kind, message: e.message }, replyTo: userMessage.id, createdAt: new Date() },
+        ]);
+      } finally {
+        if (abortRef.current === controller) {
+          inFlight.current = false;
+          abortRef.current = null;
+          setStatus('idle');
+          setPendingSince(null);
+        }
+      }
+    },
+    [conversationId, user?.email, addDetectedLocations]
+  );
+
+  /** Send text as a new user turn. Ignored while an answer is pending. */
+  const send = useCallback(
+    (text: string) => {
+      const content = text.trim();
+      if (!content || inFlight.current || loadedId.current !== conversationId) return false;
+      const prior = messagesRef.current;
+      const userMessage: ChatMessage = { id: uuidv4(), role: 'user', content, createdAt: new Date() };
+      setMessages((prev) => [...prev, userMessage]);
+      setInput('');
+      void ask(userMessage, prior);
+      return true;
+    },
+    [ask, conversationId]
+  );
+
+  const handleSubmit = useCallback(
+    (event?: { preventDefault?: () => void }) => {
+      event?.preventDefault?.();
+      send(input);
+    },
+    [input, send]
+  );
+
+  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value);
+
+  /** Retry a failed turn: drop the error and ask the same question again. */
+  const retry = useCallback(
+    (errorId: string) => {
+      if (inFlight.current) return;
+      const msgs = messagesRef.current;
+      const errIdx = msgs.findIndex((m) => m.id === errorId);
+      const err = msgs[errIdx];
+      const userMessage = msgs.find((m) => m.id === err?.replyTo);
+      if (!err || !userMessage) return;
+      const without = msgs.filter((m) => m.id !== errorId);
+      const prior = without.slice(0, without.findIndex((m) => m.id === userMessage.id));
+      setMessages(without);
+      void ask(userMessage, prior);
+    },
+    [ask]
+  );
+
+  /** Put a failed question back in the composer so it can be changed. */
+  const editFailed = useCallback((errorId: string) => {
+    if (inFlight.current) return;
+    const msgs = messagesRef.current;
+    const err = msgs.find((m) => m.id === errorId);
+    const userMessage = msgs.find((m) => m.id === err?.replyTo);
+    if (!err || !userMessage) return;
+    setMessages(msgs.filter((m) => m.id !== errorId && m.id !== userMessage.id));
+    setInput(userMessage.content);
+  }, []);
+
   return {
     messages,
     input,
-    isTyping,
-    isLoading,
+    setInput,
+    status,
+    pendingSince,
+    isTyping: status === 'pending',
+    isLoading: status === 'pending',
+    isReady: status !== 'loading',
     handleInputChange,
     handleSubmit,
-    append,
-    resetChat
+    send,
+    retry,
+    editFailed,
+    /** Kept for compatibility with PromptSuggestions. */
+    append: (m: { role: string; content: string }) => (m.role === 'user' ? send(m.content) : false),
   };
 }

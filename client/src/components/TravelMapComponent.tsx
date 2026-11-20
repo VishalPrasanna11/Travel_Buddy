@@ -47,19 +47,15 @@ export function TravelMapComponent() {
     
     setMarkers(newMarkers);
     
-    // Set center to the highest relevance location
-    const primaryLocations = validLocations
-      .filter(loc => loc.type === 'primary')
-      .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-    
-    if (primaryLocations.length > 0) {
-      setMapCenter({ lat: primaryLocations[0].lat!, lng: primaryLocations[0].lng! });
-      setMapZoom(primaryLocations.length === 1 ? 8 : 5);
-    } else if (validLocations.length > 0) {
-      setMapCenter({ lat: validLocations[0].lat!, lng: validLocations[0].lng! });
-      setMapZoom(validLocations.length > 1 ? 4 : 8);
+    // Frame the pins: centre on their middle, zoom by how spread out they are
+    // (a city's worth of places should open at street level, not continent).
+    if (validLocations.length > 0) {
+      const lats = validLocations.map(l => l.lat!);
+      const lngs = validLocations.map(l => l.lng!);
+      const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lngs) - Math.min(...lngs));
+      setMapCenter({ lat: (Math.max(...lats) + Math.min(...lats)) / 2, lng: (Math.max(...lngs) + Math.min(...lngs)) / 2 });
+      setMapZoom(span < 0.02 ? 15 : span < 0.08 ? 13 : span < 0.3 ? 12 : span < 1 ? 10 : span < 5 ? 7 : span < 20 ? 5 : 3);
     } else {
-      // No valid locations; keep default center
       setMapCenter(undefined);
       setMapZoom(2);
     }
@@ -115,42 +111,54 @@ export function TravelMapComponent() {
         </div>
       </CardContent>
       
-      {/* Location List Overlay */}
+      {/* Places on the map: collapsible list; each item recenters the map. */}
       {detectedLocations.length > 0 && (
-        <div className="absolute top-16 right-3 z-10 max-h-[min(400px,60%)] max-w-xs overflow-auto rounded-xl border bg-background p-3 shadow-overlay">
-          <h3 className="text-sm font-semibold mb-2 flex items-center">
-            <MapPin className="h-4 w-4 mr-1 text-foreground" />
-            Detected Locations
-          </h3>
-          <div className="space-y-2">
-            {detectedLocations
+        <details className="group/places absolute right-3 top-15 z-10 w-[min(18rem,calc(100%-1.5rem))] rounded-xl border bg-background shadow-overlay">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-1.5">
+              <MapPin className="size-4 text-raspberry" aria-hidden="true" />
+              Places on the map
+              <span className="font-normal text-muted-foreground tabular">{detectedLocations.length}</span>
+            </span>
+            <span className="text-meta font-normal text-muted-foreground group-open/places:hidden">Show</span>
+            <span className="hidden text-meta font-normal text-muted-foreground group-open/places:inline">Hide</span>
+          </summary>
+          <ul className="scroll-thin max-h-[min(320px,50dvh)] space-y-0.5 overflow-auto border-t p-1.5">
+            {[...detectedLocations]
               .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-              .map((location, index) => (
-                <div 
-                  key={index}
-                  className={`p-2 rounded-md cursor-pointer border-l-4 ${
-                    location.isMock
-                      ? 'border-destructive bg-danger-tint'
-                      : location.type === 'primary' 
-                        ? 'border-raspberry bg-muted' 
-                        : location.type === 'secondary'
-                          ? 'border-raspberry bg-muted'
-                          : 'border-border'
-                  } ${selectedLocation?.name === location.name ? 'ring-1 ring-raspberry' : ''}`}
-                  onClick={() => setSelectedLocation(location)}
-                >
-                  <div className="font-medium text-sm">{location.name}</div>
-                  {location.isMock ? (
-                    <div className="text-xs text-destructive mt-1">Location not found</div>
-                  ) : (
-                    location.formattedAddress && (
-                      <div className="text-xs text-muted-foreground mt-1">{location.formattedAddress}</div>
-                    )
-                  )}
-                </div>
-              ))}
-          </div>
-        </div>
+              .map((location, index) => {
+                const selected = selectedLocation?.name === location.name;
+                const dot = location.isMock
+                  ? 'bg-red'
+                  : location.type === 'primary' ? 'bg-raspberry' : location.type === 'secondary' ? 'bg-amber' : 'bg-ink';
+                return (
+                  <li key={`${location.name}-${index}`}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLocation(location)}
+                      aria-pressed={selected}
+                      className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted pointer-coarse:min-h-11 ${selected ? 'bg-raspberry-tint' : ''}`}
+                    >
+                      <span className={`mt-1.5 size-2 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
+                      <span className="min-w-0">
+                        <span className="block font-medium leading-snug [overflow-wrap:anywhere]">{location.name}</span>
+                        {location.isMock ? (
+                          <span className="block text-meta text-destructive">Location not found</span>
+                        ) : (
+                          location.formattedAddress && <span className="block truncate text-meta text-muted-foreground">{location.formattedAddress}</span>
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+          </ul>
+          <p className="flex gap-3 border-t px-3 py-2 text-meta text-muted-foreground">
+            <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-raspberry" aria-hidden="true" />See</span>
+            <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-amber" aria-hidden="true" />Stay</span>
+            <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-ink" aria-hidden="true" />Eat</span>
+          </p>
+        </details>
       )}
     </Card>
   );

@@ -1,6 +1,5 @@
 import {
     BadgeCheck,
-    Bell,
     ChevronsUpDown,
     CreditCard,
     LogOut,
@@ -10,7 +9,6 @@ import {
   import {
     Avatar,
     AvatarFallback,
-    AvatarImage,
   } from "@/components/ui/avatar"
   import {
     DropdownMenu,
@@ -72,7 +70,7 @@ import {
               </SidebarMenuButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+              className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
               side={isMobile ? "bottom" : "right"}
               align="end"
               sideOffset={4}
@@ -93,20 +91,20 @@ import {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem>
+                <DropdownMenuItem disabled>
                   <Sparkles className="mr-2 h-4 w-4" />
-                  <span>Upgrade to Pro</span>
+                  <span className="flex-1">Upgrade to Pro</span><span className="text-meta text-muted-foreground">Soon</span>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem>
+                <DropdownMenuItem disabled>
                   <BadgeCheck className="mr-2 h-4 w-4" />
-                  <span>Account</span>
+                  <span className="flex-1">Account</span><span className="text-meta text-muted-foreground">Soon</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem disabled>
                   <CreditCard className="mr-2 h-4 w-4" />
-                  <span>Billing</span>
+                  <span className="flex-1">Billing</span><span className="text-meta text-muted-foreground">Soon</span>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
