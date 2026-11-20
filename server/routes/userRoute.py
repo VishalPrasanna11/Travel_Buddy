@@ -9,6 +9,7 @@ from middlewares.auth import auth
 
 router = APIRouter()
 
+@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_current_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """
@@ -16,6 +17,7 @@ async def create_current_user(user_data: UserCreate, db: Session = Depends(get_d
     """
     return await user_controller.create_user(user_data, db)
 
+@router.get("", response_model=UserResponse)
 @router.get("/", response_model=UserResponse)
 async def get_current_user(current_user: User = Depends(auth.get_current_user)):
     """
