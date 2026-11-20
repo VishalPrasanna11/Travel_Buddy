@@ -280,7 +280,7 @@ export default function ChatPage() {
                   <div className="flex items-center">
                     <button 
                       onClick={prevSuggestion}
-                      className="p-2 rounded-full hover:bg-gray-100"
+                      className="p-2 rounded-full hover:bg-accent"
                     >
                       <ChevronLeft size={20} />
                     </button>
@@ -297,7 +297,7 @@ export default function ChatPage() {
                     
                     <button 
                       onClick={nextSuggestion}
-                      className="p-2 rounded-full hover:bg-gray-100"
+                      className="p-2 rounded-full hover:bg-accent"
                     >
                       <ChevronRight size={20} />
                     </button>
@@ -309,7 +309,7 @@ export default function ChatPage() {
                       <div 
                         key={index}
                         className={`h-2 w-2 rounded-full cursor-pointer ${
-                          index === currentIndex ? 'bg-gray-800' : 'bg-gray-300'
+                          index === currentIndex ? 'bg-ink' : 'bg-light-gray'
                         }`}
                         onClick={() => setCurrentIndex(index)}
                       />

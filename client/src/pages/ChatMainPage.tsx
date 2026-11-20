@@ -4,10 +4,12 @@ import { useParams } from 'react-router-dom';
 import { useChat } from "@/hooks/useChat";
 import { PromptSuggestions } from "@/components/ui/prompt-suggestions";
 import ChatComponent from "@/components/ChatComponent";
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
+import { Map as MapIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { Location } from '@/components/LocationContext';
 
-function ChatArea() {
+function ChatArea({ mapToggle }: { mapToggle?: React.ReactNode }) {
   const params = useParams();
   const { 
     messages, 
@@ -46,19 +48,19 @@ function ChatArea() {
   }, [addDetectedLocations]);
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-2 border-b bg-white flex justify-between">
-        {/* <h2 className="text-xl font-semibold">Travel Assistant</h2> */}
-        {!isEmpty && (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-4">
+        {!isEmpty ? (
           <button
             onClick={resetChat}
-            className="text-sm text-gray-500 hover:text-gray-700"
+            className="rounded-md text-sm text-muted-foreground hover:text-foreground"
           >
             Start New Chat
           </button>
-        )}
+        ) : <span />}
+        {mapToggle}
       </div>
-      
+
       <ChatComponent
         messages={messages}
         input={input}
@@ -81,15 +83,39 @@ function ChatArea() {
 }
 
 export default function ChatMainPage() {
+  // Below lg the map is opt-in so the conversation and composer keep the
+  // full height. At lg and up, chat and map sit side by side.
+  const [mapOpen, setMapOpen] = useState(false);
+
+  const mapToggle = (
+    <button
+      type="button"
+      onClick={() => setMapOpen((v) => !v)}
+      aria-expanded={mapOpen}
+      aria-controls="trip-map"
+      className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground lg:hidden"
+    >
+      <MapIcon className="size-4" aria-hidden="true" />
+      {mapOpen ? "Hide map" : "Show map"}
+    </button>
+  );
+
   return (
     <LocationProvider>
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] overflow-hidden">
-        <div className="w-full lg:w-1/2 h-1/2 lg:h-full border-r">
-          <ChatArea />
-        </div>
-        <div className="w-full lg:w-1/2 h-1/2 lg:h-full">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <section aria-label="Conversation" className="flex min-h-0 flex-1 flex-col lg:w-1/2 lg:flex-none lg:border-r">
+          <ChatArea mapToggle={mapToggle} />
+        </section>
+        <section
+          id="trip-map"
+          aria-label="Trip map"
+          className={cn(
+            "min-h-0 border-t lg:block lg:w-1/2 lg:border-t-0",
+            mapOpen ? "block h-[45dvh] shrink-0 lg:h-auto" : "hidden"
+          )}
+        >
           <TravelMapComponent />
-        </div>
+        </section>
       </div>
     </LocationProvider>
   );

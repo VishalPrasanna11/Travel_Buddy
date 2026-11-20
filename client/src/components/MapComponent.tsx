@@ -99,9 +99,9 @@ export default function MapComponent({
     mapMarkers.forEach((marker) => marker.setMap(null));
 
     const iconConfig: Record<string, { fill: string; size: number }> = {
-      primary: { fill: "black", size: 36 },
-      secondary: { fill: "#4B5563", size: 30 },
-      reference: { fill: "#9CA3AF", size: 24 },
+      primary: { fill: "#AA4465", size: 36 } /* attractions: raspberry */,
+      secondary: { fill: "#F5A65B", size: 30 } /* hotels: amber */,
+      reference: { fill: "#374151", size: 24 } /* restaurants: ink */,
     };
 
     const newMarkers = stableMarkers.map((markerData) => {

@@ -133,11 +133,11 @@ const WaitlistPage = () => {
                     placeholder="John Doe" 
                     value={formData.name}
                     onChange={handleChange}
-                    className={errors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                    className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
                     disabled={isLoading || isSuccess}
                   />
                   {errors.name && (
-                    <p className="text-red-500 text-xs">{errors.name}</p>
+                    <p className="text-destructive text-xs">{errors.name}</p>
                   )}
                 </div>
                 
@@ -152,11 +152,11 @@ const WaitlistPage = () => {
                     placeholder="john.doe@example.com" 
                     value={formData.email}
                     onChange={handleChange}
-                    className={errors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                    className={errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
                     disabled={isLoading || isSuccess}
                   />
                   {errors.email && (
-                    <p className="text-red-500 text-xs">{errors.email}</p>
+                    <p className="text-destructive text-xs">{errors.email}</p>
                   )}
                 </div>
                 
@@ -178,11 +178,11 @@ const WaitlistPage = () => {
                 </div>
                 
                 {errors.form && (
-                  <p className="text-red-500 text-sm">{errors.form}</p>
+                  <p className="text-destructive text-sm">{errors.form}</p>
                 )}
                 
                 {isSuccess && (
-                  <p className="text-green-500 text-sm text-center">
+                  <p className="text-success-ink text-sm text-center">
                     You've been added to our waitlist! We'll notify you when we launch new features.
                   </p>
                 )}

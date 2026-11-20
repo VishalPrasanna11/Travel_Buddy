@@ -1,47 +1,52 @@
 import { Link } from "react-router-dom";
-import { Menu } from "lucide-react";
-import { SidebarTrigger } from "./ui/sidebar";
+import { useAuth0 } from "@auth0/auth0-react";
+import { SidebarTrigger, useSidebar } from "./ui/sidebar";
 import MainNav from "./MainNav";
-import React, { useEffect } from "react";
+import { cn } from "@/lib/utils";
 
 type MainHeaderProps = {
     children?: React.ReactNode;
-    showSidebar?: boolean; // New prop to control sidebar trigger visibility
+    showSidebar?: boolean;
 };
 
-const Header = ({ children, showSidebar = true }: MainHeaderProps) => {
-    // Reference to the sidebar trigger button
-    const sidebarTriggerRef = React.useRef<HTMLButtonElement>(null);
-    
-    // Effect to auto-open the sidebar on component mount
-    useEffect(() => {
-        // Only trigger the sidebar to open if showSidebar is true
-        if (showSidebar && sidebarTriggerRef.current) {
-            sidebarTriggerRef.current.click();
-        }
-    }, [showSidebar]);
-
+/** Logo is only rendered when there is no sidebar showing its own. */
+function HeaderLogo({ hidden }: { hidden: boolean }) {
+    const { isAuthenticated } = useAuth0();
     return (
-        <header className="h-16 border-b flex items-center px-4 bg-white sticky top-0 z-10">
-            <div className="container mx-auto flex justify-between items-center">
-                <div className="flex items-center">
-                    {/* Only show the sidebar trigger if showSidebar is true */}
-                    {showSidebar && (
-                        <SidebarTrigger 
-                            ref={sidebarTriggerRef}
-                            className="flex items-center justify-center w-10 h-10 rounded-md hover:bg-gray-100 mr-4"
-                        >
-                            <Menu className="h-5 w-5" />
-                        </SidebarTrigger>
-                    )}
-                    <a href="/home" className="font-medium text-xl">TravelBuddy</a>
+        <Link
+            to={isAuthenticated ? "/home" : "/"}
+            className={cn(
+                "font-display text-lg font-semibold tracking-tight text-foreground rounded-md",
+                hidden && "md:hidden"
+            )}
+        >
+            TravelBuddy
+        </Link>
+    );
+}
+
+function SidebarHeaderControls() {
+    const { open, isMobile } = useSidebar();
+    return (
+        <>
+            <SidebarTrigger
+                className="size-10 pointer-coarse:size-11 text-muted-foreground hover:text-foreground"
+                aria-label={isMobile ? "Open menu" : open ? "Hide sidebar" : "Show sidebar"}
+            />
+            <HeaderLogo hidden={open && !isMobile} />
+        </>
+    );
+}
+
+const Header = ({ children, showSidebar = true }: MainHeaderProps) => {
+    return (
+        <header className="sticky top-0 z-20 flex h-header shrink-0 items-center border-b bg-background/95 px-gutter backdrop-blur-sm supports-[backdrop-filter]:bg-background/85 md:px-gutter-lg pt-[env(safe-area-inset-top)]">
+            <div className="flex w-full items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    {showSidebar ? <SidebarHeaderControls /> : <HeaderLogo hidden={false} />}
                 </div>
-                
-                <div>
-                    <MainNav />
-                </div>
+                <MainNav />
             </div>
-            
             {children}
         </header>
     );

@@ -1,81 +1,11 @@
-// import { Link } from "react-router-dom";
-// import { Instagram, Twitter, Facebook } from 'lucide-react';
-// import { Button } from "@/components/ui/button";
-// import { Input } from "@/components/ui/input";  
- 
-// const Footer = () => {
-//     return (
-//         <footer>
-//             <div className="bg-black py-8">
-//             {/* <div className="py-8" style={{ backgroundColor: "#374151" }}> */}
- 
-//                 <div className="container mx-auto px-4">
-//                     {/* Top section with logo and social */}
-//                     <div className="flex flex-col md:flex-row justify-between items-center mb-6">
-                        
-//                          {/* Newsletter */}
-//       <div className="py-8 text-left space-y-6">
-//         <h2 className="text-3xl font-medium">Stay inspired</h2>
-//         <p className="text-muted-foreground max-w-md mx-auto">
-//           Subscribe to receive AI travel insights and personalized destination recommendations
-//         </p>
-//         <div className="flex max-w-md mx-auto">
-//           <Input placeholder="Your email address" className="rounded-r-none" />
-//           <Button className="rounded-l-none bg-raspberry hover:bg-raspberry/90">Subscribe</Button>
-//         </div>
-//       </div>
- 
-//                         {/* Social media icons */}
-//                         <div className="flex gap-4 mt-4 md:mt-0">
-//                             <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-white hover:text-gray-300 transition-colors">
-//                                 <Instagram size={20} />
-//                             </a>
-//                             <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-white hover:text-gray-300 transition-colors">
-//                                 <Twitter size={20} />
-//                             </a>
-//                             <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-white hover:text-gray-300 transition-colors">
-//                                 <Facebook size={20} />
-//                             </a>
-//                         </div>
-//                     </div>
-                    
-//                     {/* Bottom section with links */}
-//                     <div className="flex flex-col md:flex-row justify-between items-center border-t border-gray-800 pt-6">
-//                         <span className="text-white text-sm">
-//                             &copy; {new Date().getFullYear()} TravelBuddy
-//                         </span>
-                        
-//                         <div className="flex flex-wrap gap-6 mt-4 md:mt-0">
-//                             <Link to="/about" className="text-white text-sm hover:text-gray-300 transition-colors">
-//                                 About
-//                             </Link>
-//                             <Link to="/contact" className="text-white text-sm hover:text-gray-300 transition-colors">
-//                                 Contact
-//                             </Link>
-//                             <Link to="/privacy" className="text-white text-sm hover:text-gray-300 transition-colors">
-//                                 Privacy Policy
-//                             </Link>
-//                             <Link to="/terms" className="text-white text-sm hover:text-gray-300 transition-colors">
-//                                 Terms of Service
-//                             </Link>
-//                         </div>
-//                     </div>
-//                 </div>
-//             </div>
-//         </footer>
-//     );
-// }
- 
-// export default Footer;
-
-
-"use client"
-
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Globe, MessageCircle, Share2, Loader2, CheckCircle } from 'lucide-react';
+import { Globe, MessageCircle, Share2, Loader2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+// TODO(Phase 3, clarify): legal links point at routes that don't exist yet and
+// the social links are placeholders. Content is unchanged here; only styling.
 
 const Footer = () => {
     const [email, setEmail] = useState("");
@@ -83,54 +13,33 @@ const Footer = () => {
     const [isSuccess, setIsSuccess] = useState(false);
     const [error, setError] = useState("");
 
-    // Email validation function
-    const isValidEmail = (email: string) => {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
-    };
+    const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
-        // Reset states
         setError("");
-        
-        // Validate email
+
         if (!email.trim()) {
             setError("Email is required");
             return;
         }
-        
         if (!isValidEmail(email)) {
             setError("Please enter a valid email address");
             return;
         }
-        
+
         try {
             setIsLoading(true);
-            
-            // Submit to Formspree
             const response = await fetch("https://formspree.io/f/mgvajnwk", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email }),
             });
+            if (!response.ok) throw new Error("Submission failed");
 
-            if (!response.ok) {
-                throw new Error("Submission failed");
-            }
-            
-            // Show success state
             setIsSuccess(true);
             setEmail("");
-            
-            // Reset success state after 3 seconds
-            setTimeout(() => {
-                setIsSuccess(false);
-            }, 3000);
-            
+            setTimeout(() => setIsSuccess(false), 3000);
         } catch (err) {
             console.error("Subscription error:", err);
             setError("Failed to subscribe. Please try again later.");
@@ -139,94 +48,78 @@ const Footer = () => {
         }
     };
 
-    return (
-        <footer>
-            <div className="bg-black py-8">
-                <div className="container mx-auto px-4">
-                    {/* Top section with logo and social */}
-                    <div className="flex flex-col md:flex-row justify-between items-center mb-6">
-                        
-                        {/* Newsletter */}
-                        <div className="py-8 text-left space-y-6">
-                            <h2 className="text-3xl font-medium">Stay inspired</h2>
-                            <p className="text-muted-foreground max-w-md mx-auto">
-                                Subscribe to receive AI travel insights and personalized destination recommendations
-                            </p>
-                            <form onSubmit={handleSubmit} className="left">
-                                <div className="flex max-w-md mx-auto">
-                                    <Input 
-                                        type="email"
-                                        name="email"
-                                        placeholder="Your email address" 
-                                        className={`rounded-r-none ${error ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        disabled={isLoading || isSuccess}
-                                    />
-                                    <Button 
-                                        type="submit"
-                                        className="rounded-l-none bg-raspberry hover:bg-raspberry/90 min-w-[120px]"
-                                        disabled={isLoading || isSuccess}
-                                    >
-                                        {isLoading ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : isSuccess ? (
-                                            <CheckCircle className="h-4 w-4" />
-                                        ) : (
-                                            "Subscribe"
-                                        )}
-                                    </Button>
-                                </div>
-                                {error && (
-                                    <p className="text-red-500 text-sm mt-1 max-w-md mx-auto">{error}</p>
-                                )}
-                                {isSuccess && (
-                                    <p className="text-green-500 text-sm mt-1 max-w-md mx-auto">
-                                        Successfully subscribed!
-                                    </p>
-                                )}
-                            </form>
-                        </div>
+    const linkClass =
+        "text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center min-h-11";
+    const iconLinkClass =
+        "inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors";
 
-                        {/* Social media icons */}
-                        <div className="flex gap-4 mt-4 md:mt-0">
-                            <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-white hover:text-gray-300 transition-colors">
-                                <Globe size={20} />
-                            </a>
-                            <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-white hover:text-gray-300 transition-colors">
-                                <MessageCircle size={20} />
-                            </a>
-                            <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-white hover:text-gray-300 transition-colors">
-                                <Share2 size={20} />
-                            </a>
-                        </div>
+    return (
+        <footer className="border-t bg-muted">
+            <div className="mx-auto max-w-6xl px-gutter md:px-gutter-lg py-12">
+                <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between">
+                    <div className="max-w-md space-y-3">
+                        <h2 className="text-2xl font-semibold">Stay inspired</h2>
+                        <p className="text-muted-foreground">
+                            Subscribe to receive AI travel insights and personalized destination recommendations
+                        </p>
+                        <form onSubmit={handleSubmit} noValidate>
+                            <label htmlFor="footer-email" className="sr-only">Email address</label>
+                            <div className="flex gap-2">
+                                <Input
+                                    id="footer-email"
+                                    type="email"
+                                    name="email"
+                                    autoComplete="email"
+                                    placeholder="Your email address"
+                                    aria-invalid={error ? true : undefined}
+                                    aria-describedby={error ? "footer-email-error" : undefined}
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    disabled={isLoading || isSuccess}
+                                    className="bg-background"
+                                />
+                                <Button type="submit" className="min-w-[7.5rem]" disabled={isLoading || isSuccess}>
+                                    {isLoading ? (
+                                        <Loader2 className="animate-spin" aria-label="Subscribing" />
+                                    ) : isSuccess ? (
+                                        <CheckCircle aria-label="Subscribed" />
+                                    ) : (
+                                        "Subscribe"
+                                    )}
+                                </Button>
+                            </div>
+                            <p className="mt-2 min-h-5 text-sm" role="status" aria-live="polite">
+                                {error && <span id="footer-email-error" className="text-destructive">{error}</span>}
+                                {isSuccess && <span className="text-success-ink">Successfully subscribed!</span>}
+                            </p>
+                        </form>
                     </div>
-                    
-                    {/* Bottom section with links */}
-                    <div className="flex flex-col md:flex-row justify-between items-center border-t border-gray-800 pt-6">
-                        <span className="text-white text-sm">
-                            &copy; {new Date().getFullYear()} TravelBuddy
-                        </span>
-                        
-                        <div className="flex flex-wrap gap-6 mt-4 md:mt-0">
-                            <Link to="/about" className="text-white text-sm hover:text-gray-300 transition-colors">
-                                About
-                            </Link>
-                            <Link to="/contact" className="text-white text-sm hover:text-gray-300 transition-colors">
-                                Contact
-                            </Link>
-                            <Link to="/privacy" className="text-white text-sm hover:text-gray-300 transition-colors">
-                                Privacy Policy
-                            </Link>
-                            <Link to="/terms" className="text-white text-sm hover:text-gray-300 transition-colors">
-                                Terms of Service
-                            </Link>
-                        </div>
+
+                    <div className="flex gap-1">
+                        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className={iconLinkClass}>
+                            <Globe size={20} />
+                        </a>
+                        <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter" className={iconLinkClass}>
+                            <MessageCircle size={20} />
+                        </a>
+                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className={iconLinkClass}>
+                            <Share2 size={20} />
+                        </a>
                     </div>
+                </div>
+
+                <div className="mt-10 flex flex-col gap-4 border-t pt-6 md:flex-row md:items-center md:justify-between">
+                    <span className="text-sm text-muted-foreground">&copy; {new Date().getFullYear()} TravelBuddy</span>
+                    <nav aria-label="Footer" className="flex flex-wrap gap-x-6">
+                        <Link to="/about" className={linkClass}>About</Link>
+                        <Link to="/contact" className={linkClass}>Contact</Link>
+                        <Link to="/privacy" className={linkClass}>Privacy Policy</Link>
+                        <Link to="/terms" className={linkClass}>Terms of Service</Link>
+                    </nav>
                 </div>
             </div>
         </footer>
     );
-}
+};
 
 export default Footer;

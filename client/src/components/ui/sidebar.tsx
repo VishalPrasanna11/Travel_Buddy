@@ -238,6 +238,9 @@ function Sidebar({
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className
         )}
+        // A collapsed offcanvas sidebar is off-screen: keep it out of the
+        // tab order and the accessibility tree.
+        inert={state === "collapsed" && collapsible === "offcanvas" ? true : undefined}
         {...props}
       >
         <div
@@ -305,9 +308,10 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   )
 }
 
-function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+function SidebarInset({ className, ...props }: React.ComponentProps<"div">) {
+  // A div, not <main>: the layout owns the single <main> landmark.
   return (
-    <main
+    <div
       data-slot="sidebar-inset"
       className={cn(
         "bg-background relative flex w-full flex-1 flex-col",

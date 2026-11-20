@@ -15,19 +15,19 @@ export function StepsSection() {
       color: "bg-raspberry"
     },
     {
-      icon: <Search className="h-8 w-8 text-white" />,
+      icon: <Search className="h-8 w-8 text-ink" />,
       title: "Get personalized recommendations",
       description: "Our AI analyzes thousands of options to find the perfect match for you",
       color: "bg-amber"
     },
     {
-      icon: <Calendar className="h-8 w-8 text-white" />,
+      icon: <Calendar className="h-8 w-8 text-ink" />,
       title: "Review your custom itinerary",
       description: "Explore day-by-day plans with accommodations, activities, and dining options",
       color: "bg-leaf-green"
     },
     {
-      icon: <MapPin className="h-8 w-8 text-white" />,
+      icon: <MapPin className="h-8 w-8 text-ink" />,
       title: "Book and enjoy your trip",
       description: "Finalize your plans and enjoy a perfectly tailored travel experience",
       color: "bg-teal-blue"

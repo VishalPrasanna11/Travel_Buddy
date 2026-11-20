@@ -30,7 +30,7 @@ export function UseCaseMindmap() {
       icon: <Utensils className="h-6 w-6" />,
       title: "Dining Recommendations",
       description: "Find local restaurants and cuisine based on your dietary preferences",
-      color: "bg-leaf-green text-foreground",
+      color: "bg-leaf-tint text-foreground",
       position: { x: 160, y: 90 }
     },
     {
@@ -38,7 +38,7 @@ export function UseCaseMindmap() {
       icon: <Compass className="h-6 w-6" />,
       title: "Activities & Experiences",
       description: "Discover unique experiences and hidden gems at your destination",
-      color: "bg-teal-blue text-white",
+      color: "bg-teal-blue text-foreground",
       position: { x: -10, y: 180 }
     },
     {
@@ -46,7 +46,7 @@ export function UseCaseMindmap() {
       icon: <MapPin className="h-6 w-6" />,
       title: "Local Insights",
       description: "Get insider tips and cultural information about your destination",
-      color: "bg-raspberry/80 text-foreground",
+      color: "bg-raspberry text-white",
       position: { x: -200, y: 90 }
     },
     {

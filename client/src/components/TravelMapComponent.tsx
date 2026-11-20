@@ -87,10 +87,10 @@ export function TravelMapComponent() {
   };
   
   return (
-    <Card className="shadow-lg h-full">
-      <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center">
-          <Map className="mr-2 h-5 w-5 text-blue-600" />
+    <Card className="relative h-full min-h-0 gap-0 rounded-none border-0 py-0 shadow-none">
+      <CardHeader className="flex h-12 shrink-0 flex-row items-center justify-between border-b px-4 py-0">
+        <CardTitle className="flex items-center text-sm font-semibold">
+          <Map className="mr-2 h-4 w-4 text-raspberry" aria-hidden="true" />
           Travel Map
         </CardTitle>
         {detectedLocations.length > 0 && (
@@ -103,23 +103,23 @@ export function TravelMapComponent() {
           </Button>
         )}
       </CardHeader>
-      <CardContent className="p-0">
-        <div className="h-[600px]">
+      <CardContent className="min-h-0 flex-1 p-0">
+        <div className="h-full">
           <MapComponent 
             markers={markers}
             center={mapCenter}
             zoom={mapZoom}
             onMapClick={handleMapClick}
-            height="600px"
+            height="100%"
           />
         </div>
       </CardContent>
       
       {/* Location List Overlay */}
       {detectedLocations.length > 0 && (
-        <div className="absolute top-16 right-4 bg-white rounded-lg shadow-lg p-4 max-w-xs max-h-[400px] overflow-auto z-10">
+        <div className="absolute top-16 right-3 z-10 max-h-[min(400px,60%)] max-w-xs overflow-auto rounded-xl border bg-background p-3 shadow-overlay">
           <h3 className="text-sm font-semibold mb-2 flex items-center">
-            <MapPin className="h-4 w-4 mr-1 text-blue-600" />
+            <MapPin className="h-4 w-4 mr-1 text-foreground" />
             Detected Locations
           </h3>
           <div className="space-y-2">
@@ -130,21 +130,21 @@ export function TravelMapComponent() {
                   key={index}
                   className={`p-2 rounded-md cursor-pointer border-l-4 ${
                     location.isMock
-                      ? 'border-red-400 bg-red-50'
+                      ? 'border-destructive bg-danger-tint'
                       : location.type === 'primary' 
-                        ? 'border-blue-600 bg-blue-50' 
+                        ? 'border-raspberry bg-muted' 
                         : location.type === 'secondary'
-                          ? 'border-blue-400 bg-gray-50'
-                          : 'border-gray-300'
-                  } ${selectedLocation?.name === location.name ? 'ring-1 ring-blue-400' : ''}`}
+                          ? 'border-raspberry bg-muted'
+                          : 'border-border'
+                  } ${selectedLocation?.name === location.name ? 'ring-1 ring-raspberry' : ''}`}
                   onClick={() => setSelectedLocation(location)}
                 >
                   <div className="font-medium text-sm">{location.name}</div>
                   {location.isMock ? (
-                    <div className="text-xs text-red-500 mt-1">Location not found</div>
+                    <div className="text-xs text-destructive mt-1">Location not found</div>
                   ) : (
                     location.formattedAddress && (
-                      <div className="text-xs text-gray-500 mt-1">{location.formattedAddress}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{location.formattedAddress}</div>
                     )
                   )}
                 </div>

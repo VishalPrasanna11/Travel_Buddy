@@ -147,6 +147,14 @@ const travelCategories = [
   }
 ];
 
+// Static class map so Tailwind can see every class (no dynamic `bg-${x}`).
+const categoryIconClass: Record<string, string> = {
+  raspberry: "bg-raspberry text-white",
+  amber: "bg-amber text-ink",
+  "leaf-green": "bg-leaf-tint text-ink",
+  "teal-blue": "bg-teal-blue text-ink",
+};
+
 const HomePage = () => {
   // Auth0 user authentication
   //Don't remove this
@@ -262,7 +270,7 @@ const HomePage = () => {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-3xl font-medium">AI-Matched Destinations</h2>
-              <Badge className="bg-amber/10 text-amber border-none">
+              <Badge className="bg-amber/10 text-amber-ink border-none">
                 <Sparkles className="h-3 w-3 mr-1" />
                 For You
               </Badge>
@@ -278,7 +286,7 @@ const HomePage = () => {
             className="overflow-hidden hover:shadow-md transition-all duration-300 cursor-pointer group"
           >
             <AspectRatio ratio={3 / 4} className="bg-muted">
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="absolute inset-0 bg-gradient-to-t from-ink/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <div className="absolute inset-0 flex items-end p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <Button 
                   variant="secondary" 
@@ -355,7 +363,7 @@ const HomePage = () => {
             <Card className="bg-transparent border-none shadow-none">
               <CardContent className="space-y-4 text-center">
                 <div className="mx-auto w-16 h-16 rounded-full bg-amber/10 flex items-center justify-center">
-                  <Compass className="h-8 w-8 text-amber" />
+                  <Compass className="h-8 w-8 text-amber-ink" />
                 </div>
                 <h3 className="text-xl font-medium">Hidden Gem Discovery</h3>
                 <p className="text-muted-foreground">
@@ -367,7 +375,7 @@ const HomePage = () => {
             <Card className="bg-transparent border-none shadow-none">
               <CardContent className="space-y-4 text-center">
                 <div className="mx-auto w-16 h-16 rounded-full bg-leaf-green/10 flex items-center justify-center">
-                  <Clock className="h-8 w-8 text-leaf-green" />
+                  <Clock className="h-8 w-8 text-leaf-ink" />
                 </div>
                 <h3 className="text-xl font-medium">Real-time Adaptations</h3>
                 <p className="text-muted-foreground">
@@ -396,7 +404,7 @@ const HomePage = () => {
           {aiTravelInsights.map((insight) => (
             <Card key={insight.title} className="hover:shadow-md transition-all duration-300 cursor-pointer">
               <CardContent className="p-6 space-y-4">
-                <Badge className="bg-teal-blue/10 text-teal-blue border-none">
+                <Badge className="bg-teal-blue/10 text-teal-ink border-none">
                   {insight.category}
                 </Badge>
                 <h3 className="text-xl font-medium">{insight.title}</h3>
@@ -481,9 +489,9 @@ const HomePage = () => {
               onClick={() => window.open(category.externalLink, "_blank", "noopener,noreferrer")}
             >
               <AspectRatio ratio={1/1}>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-ink/70 to-transparent" />
                 <div className="absolute inset-0 flex flex-col justify-end p-4">
-                  <div className={`mb-2 bg-${category.color}/80 text-white w-10 h-10 rounded-full flex items-center justify-center`}>
+                  <div className={`mb-2 ${categoryIconClass[category.color] ?? "bg-raspberry text-white"} w-10 h-10 rounded-full flex items-center justify-center`}>
                     {category.icon}
                   </div>
                   <h3 className="text-xl font-medium text-white">{category.name}</h3>

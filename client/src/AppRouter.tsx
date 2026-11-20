@@ -37,7 +37,7 @@ const AppRouter = () => {
         <Route 
           path="/chat/:id"
           element={
-            <Layout showHero={false} showSidebar>
+            <Layout variant="app" showSidebar>
               <ChatMainPage />
             </Layout>
           } 
@@ -55,7 +55,7 @@ const AppRouter = () => {
         <Route
           path="/chatmaps"
           element={
-            <Layout showHero={false} showSidebar>
+            <Layout variant="app" showSidebar>
               <ChatMapsPage />
             </Layout>
           }
@@ -64,7 +64,7 @@ const AppRouter = () => {
         <Route
           path="/chatmain/:id"
           element={
-            <Layout showHero={false} showSidebar>
+            <Layout variant="app" showSidebar>
              <ChatMainPage />
             </Layout>
           }

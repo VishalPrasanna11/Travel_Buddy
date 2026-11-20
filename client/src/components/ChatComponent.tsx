@@ -1,11 +1,12 @@
-import { ChangeEvent, ReactNode, useRef, useEffect, useState } from 'react';
+import { ChangeEvent, ReactNode, useRef, useEffect } from 'react';
 import { type Message } from '@/components/ui/chat-message';
-import { ChatContainer } from '@/components/ui/chat';
 import { ChatForm } from '@/components/ui/chat';
 import { MessageInput } from '@/components/ui/message-input';
-import { ThumbsUp, ThumbsDown, MapPin } from 'lucide-react';
+import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import WeatherDisplay from './WeatherDisplay';
-import { useLocation, Location } from './LocationContext';
+import { MessageRow } from '@/components/ui/message-row';
+import { useAuth0 } from '@auth0/auth0-react';
+import type { Location } from './LocationContext';
 
 // Define props including the location detection callback
 type ChatComponentProps = {
@@ -32,11 +33,19 @@ export default function ChatComponent({
   children
 }: ChatComponentProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth0();
+  const userInitial = (user?.given_name || user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const processedMessagesRef = useRef<Set<string>>(new Set());
 
+  // Scroll only the message list. scrollIntoView() also scrolls every
+  // ancestor, which pushed the conversation under the sticky header.
+  // (Phase 3 makes this conditional on the user already being at the bottom.)
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = chatContainerRef.current;
+    if (!el) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? 'auto' : 'smooth' });
   };
 
   useEffect(() => {
@@ -189,102 +198,74 @@ export default function ChatComponent({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] relative">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <div 
-        className="flex-1 overflow-y-auto pr-2 chat-scrollbar"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain chat-scrollbar"
         ref={chatContainerRef}
-        style={{
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#d1d5db transparent'
-        }}
       >
         {isEmpty ? (
-          <div className="flex flex-col items-center justify-center h-full">
+          <div className="flex min-h-full flex-col items-center justify-center">
             {children}
           </div>
         ) : (
-          <div className="py-4 px-4">
-            {messages.map((message, index) => (
-              <div key={message.id} className="mb-4">
-                <div className="flex items-start">
-                  {/* Avatar */}
-                  <div className="mr-3 mt-1">
-                    {message.role === "user" ? (
-                      <div className="w-8 h-8 rounded-full bg-orange-600 flex items-center justify-center text-white font-semibold">
-                        V
+          <div className="mx-auto w-full max-w-3xl px-4 py-6">
+            <ol className="space-y-6" aria-label="Messages">
+              {messages.map((message) => (
+                <li key={message.id}>
+                  {message.role === "user" ? (
+                    <MessageRow role="user" initial={userInitial}>
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    </MessageRow>
+                  ) : (
+                    <MessageRow
+                      role="assistant"
+                      footer={
+                        // TODO(Phase 3): feedback isn't wired to anything yet.
+                        <div className="flex items-center gap-1">
+                          <button type="button" aria-label="Helpful" className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:size-11">
+                            <ThumbsUp size={16} aria-hidden="true" />
+                          </button>
+                          <button type="button" aria-label="Not helpful" className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:size-11">
+                            <ThumbsDown size={16} aria-hidden="true" />
+                          </button>
+                        </div>
+                      }
+                    >
+                      <div className="max-w-prose text-base text-pretty">
+                        <WeatherDisplay content={message.content} />
+                        <div dangerouslySetInnerHTML={{ __html: convertMarkdownToHTML(message.content) }} />
                       </div>
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center text-white">
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12 2L6 7L12 12L18 7L12 2Z" fill="white" />
-                          <path d="M12 12L6 7L6 17L12 22L18 17L18 7L12 12Z" fill="white" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
+                    </MessageRow>
+                  )}
+                </li>
+              ))}
+            </ol>
 
-                  {/* Message content */}
-                  <div className="flex-1">
-                    {/* Message text */}
-                    <div className="text-sm prose prose-sm max-w-none">
-                      {message.role === "assistant" ? (
-                        <>
-                          <WeatherDisplay content={message.content} />
-                          <div dangerouslySetInnerHTML={{ __html: convertMarkdownToHTML(message.content) }} />
-                        </>
-                      ) : (
-                        <p>{message.content}</p>
-                      )}
-                    </div>
-                    
-                    {/* Feedback buttons (only for assistant messages) */}
-                    {message.role === "assistant" && (
-                      <div className="flex items-center space-x-2 mt-2">
-                        <button className="p-1 hover:bg-gray-100 rounded">
-                          <ThumbsUp size={16} className="text-gray-500" />
-                        </button>
-                        <button className="p-1 hover:bg-gray-100 rounded">
-                          <ThumbsDown size={16} className="text-gray-500" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {/* Loading indicator */}
+            {/* Interim waiting indicator; Phase 3 replaces it with agent progress. */}
             {isTyping && (
-              <div className="flex items-start">
-                <div className="mr-3 mt-1">
-                  <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center text-white">
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 2L6 7L12 12L18 7L12 2Z" fill="white" />
-                      <path d="M12 12L6 7L6 17L12 22L18 17L18 7L12 12Z" fill="white" />
-                    </svg>
-                  </div>
+              <MessageRow role="assistant" className="mt-6">
+                <div className="flex h-8 items-center" role="status">
+                  <span className="typing-indicator" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </span>
+                  <span className="sr-only">TravelBuddy is working on your answer</span>
                 </div>
-                <div className="flex-1">
-                  <div className="typing-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
-                </div>
-              </div>
+              </MessageRow>
             )}
             <div ref={messagesEndRef} />
           </div>
         )}
       </div>
       
-      <div className="px-4 pb-4 sticky bottom-0 bg-white border-t">
+      <div className="shrink-0 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <ChatForm
-          className="bg-white rounded-xl border"
+          className="mx-auto w-full max-w-3xl"
           isPending={isLoading || isTyping}
           handleSubmit={onSubmit}
         >
-          {({ setFiles }) => (
+          {() => (
             <MessageInput
               value={input}
               onChange={onInputChange}

@@ -109,7 +109,7 @@ export function LocationSearch({
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="text-xl flex items-center">
-          <MapPin className="mr-2 h-5 w-5 text-blue-600" />
+          <MapPin className="mr-2 h-5 w-5 text-foreground" />
           Find Locations
         </CardTitle>
       </CardHeader>
@@ -127,7 +127,7 @@ export function LocationSearch({
           <Button
             onClick={handleSearch}
             disabled={isSearching}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-raspberry hover:bg-raspberry-hover"
           >
             <Search className="h-4 w-4" />
           </Button>
@@ -173,7 +173,7 @@ export function LocationSearch({
                   onClick={() => onLocationSelect(location)}
                 >
                   <div className="flex items-center">
-                    <MapPin className="h-4 w-4 mr-2 text-blue-600" />
+                    <MapPin className="h-4 w-4 mr-2 text-foreground" />
                     <span>{location.name}</span>
                   </div>
                 </div>
