@@ -9,7 +9,7 @@ import { CopyButton } from '@/components/ui/copy-button';
 import { AnswerMarkdown } from '@/components/chat/answer-markdown';
 import { ResultCards } from '@/components/chat/result-cards';
 import { WeatherNote } from '@/components/chat/weather-note';
-import { AgentProgress } from '@/components/chat/agent-progress';
+import { AgentProgress, PlanSummary } from '@/components/chat/agent-progress';
 import { Composer, type ComposerHandle } from '@/components/chat/composer';
 import { ChatWelcome } from '@/components/chat/chat-welcome';
 import { ItineraryView } from '@/components/chat/itinerary';
@@ -227,6 +227,7 @@ export default function ChatComponent({
                         </span>
                       }
                     >
+                      <PlanSummary progress={m.progress} elapsedMs={m.elapsedMs} />
                       <AnswerMarkdown>{m.content}</AnswerMarkdown>
                       <ItineraryView data={m.data} onShowOnMap={onShowOnMap} tripId={m.serverId ? conversationId : undefined} />
                       <WeatherNote data={m.data} answer={m.content} />

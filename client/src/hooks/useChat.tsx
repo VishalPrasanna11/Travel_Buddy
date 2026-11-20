@@ -158,6 +158,7 @@ export function useChat(conversationId: string) {
       };
       const timer = setTimeout(() => controller.abort('timeout'), ASK_TIMEOUT_MS);
       let pinned = 0;
+      const started = Date.now();
 
       try {
         const token = await getToken();
@@ -173,7 +174,8 @@ export function useChat(conversationId: string) {
             if (ev.data.section) continue;
             throw new AskError(ev.data.code === 'CANCELLED' ? 'cancelled' : 'server', ev.data.message, { code: ev.data.code, requestId: ev.data.request_id });
           }
-          const next = applyStreamEvent(reply, ev);
+          let next = applyStreamEvent(reply, ev);
+          if (ev.event === 'final') next = { ...next, elapsedMs: Date.now() - started };
           update(next);
           if (ev.event === 'trip') {
             const vp = (ev.data as { destination?: { viewport?: Parameters<typeof setViewport>[0] } }).destination?.viewport;

@@ -322,6 +322,8 @@ export type ChatMessage = {
   clarification?: Clarification
   /** Thumbs given on this answer. */
   feedback?: "up" | "down"
+  /** How long the live answer took (this session only). */
+  elapsedMs?: number
 }
 
 // -------------------------------------------------------------- readers

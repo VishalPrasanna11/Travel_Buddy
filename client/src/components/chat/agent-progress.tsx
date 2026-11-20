@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { AlertTriangle, BedDouble, Car, Check, CloudSun, Landmark, Loader2, Minus, Plane, Utensils, type LucideIcon } from "lucide-react"
+import { AlertTriangle, BedDouble, Car, Check, ChevronRight, CloudSun, Landmark, Loader2, Minus, Plane, Utensils, type LucideIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { AgentKey, AgentProgressMap, AgentState } from "./types"
@@ -49,6 +49,42 @@ function headline(progress: AgentProgressMap, hasText: boolean) {
   const active = AGENTS.filter((a) => progress[a.key]?.state === "running").map((a) => a.label.toLowerCase())
   if (active.length) return `Checking ${active.join(", ")}`
   return "Putting your trip together"
+}
+
+/**
+ * After the answer lands: a quiet "Planned in 42s" pill that opens to show
+ * which searches ran and what they found.
+ */
+export function PlanSummary({ progress, elapsedMs }: { progress?: AgentProgressMap; elapsedMs?: number }) {
+  const p = progress ?? {}
+  const ran = AGENTS.filter((a) => p[a.key])
+  if (!ran.length && elapsedMs == null) return null
+  const secs = elapsedMs != null ? Math.max(1, Math.round(elapsedMs / 1000)) : null
+  return (
+    <details className="group/plan mb-3">
+      <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-full border bg-card px-3 text-meta font-medium text-muted-foreground transition-colors hover:border-gray-strong hover:text-ink pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
+        <Check className="size-3.5 text-success-ink" aria-hidden="true" />
+        {secs != null ? `Planned in ${secs < 60 ? `${secs}s` : fmt(secs)}` : "How I planned this"}
+        {ran.length > 0 && <span className="text-muted-foreground">· {ran.length} search{ran.length > 1 ? "es" : ""}</span>}
+        <ChevronRight className="size-3.5 transition-transform group-open/plan:rotate-90" aria-hidden="true" />
+      </summary>
+      {ran.length > 0 && (
+        <ul className="mt-2 flex flex-wrap gap-2" aria-label="Searches for this answer">
+          {ran.map(({ key, label, icon: Icon, iconClass }) => {
+            const s = p[key]!
+            return (
+              <li key={key} className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-meta text-ink" title={s.message}>
+                <Icon className={`size-3.5 ${iconClass}`} aria-hidden="true" />
+                <span className="font-medium">{label}</span>
+                <StateIcon state={s.state} />
+                <span className="text-muted-foreground">{stateText(s.state, s.count, s.message)}</span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </details>
+  )
 }
 
 export function AgentProgress({ since, progress, hasText = false, onStop }: { since: number; progress?: AgentProgressMap; hasText?: boolean; onStop?: () => void }) {

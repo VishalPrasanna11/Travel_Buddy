@@ -23,11 +23,24 @@ interface MapComponentProps {
 
 let optionsSet = false;
 
-function makePinSvg(fill: string, size: number) {
+// Lucide glyphs (24×24, stroked) drawn inside the pin badge.
+const GLYPHS: Record<string, string> = {
+  primary: '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
+  secondary: '<path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8"/><path d="M4 10V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/><path d="M12 4v6"/><path d="M2 18h20"/>',
+  reference: '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',
+};
+
+/** Round category badge with a white ring, soft shadow and a short tail. */
+function makePinSvg(type: string, fill: string, glyph: string, size: number) {
+  const h = Math.round(size * 1.15);
   return `data:image/svg+xml,${encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">
-      <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z" fill="${fill}" stroke="${fill}" stroke-width="2"/>
-      <circle cx="12" cy="10" r="3" fill="white" stroke="white" stroke-width="2"/>
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${h}" viewBox="0 0 40 46">
+      <defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#1f2937" flood-opacity=".35"/></filter></defs>
+      <g filter="url(#s)">
+        <path d="M14.5 33.5 20 42l5.5-8.5z" fill="${fill}" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+        <circle cx="20" cy="19" r="16" fill="${fill}" stroke="white" stroke-width="3"/>
+      </g>
+      <g transform="translate(11 10) scale(.75)" fill="none" stroke="${type === "secondary" ? "#374151" : "white"}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${glyph}</g>
     </svg>
   `)}`;
 }
@@ -120,23 +133,25 @@ export default function MapComponent({
 
     const iconConfig: Record<string, { fill: string; size: number }> = {
       primary: { fill: "#AA4465", size: 36 } /* attractions: raspberry */,
-      secondary: { fill: "#F5A65B", size: 30 } /* hotels: amber */,
-      reference: { fill: "#374151", size: 28 } /* restaurants: ink */,
+      secondary: { fill: "#F5A65B", size: 34 } /* hotels: amber */,
+      reference: { fill: "#374151", size: 32 } /* restaurants: ink */,
     };
 
     infoRef.current ??= new google.maps.InfoWindow();
     const info = infoRef.current;
 
     const created = stableMarkers.map((markerData) => {
-      const cfg = iconConfig[markerData.type || "primary"] || iconConfig.primary;
+      const kind = iconConfig[markerData.type || "primary"] ? markerData.type || "primary" : "primary";
+      const cfg = iconConfig[kind];
+      const h = Math.round(cfg.size * 1.15);
       const marker = new google.maps.Marker({
         position: { lat: markerData.lat, lng: markerData.lng },
         map: mapInstance,
         title: markerData.title || "Location",
         icon: {
-          url: makePinSvg(cfg.fill, cfg.size),
-          scaledSize: new google.maps.Size(cfg.size, cfg.size),
-          anchor: new google.maps.Point(cfg.size / 2, cfg.size),
+          url: makePinSvg(kind, cfg.fill, GLYPHS[kind], cfg.size),
+          scaledSize: new google.maps.Size(cfg.size, h),
+          anchor: new google.maps.Point(cfg.size / 2, h * (42 / 46)),
         },
       });
 

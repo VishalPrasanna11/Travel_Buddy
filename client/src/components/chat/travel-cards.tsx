@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { displayLocale } from "@/lib/format"
 import {
-  AirVent, BedDouble, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Coffee, Dumbbell, ExternalLink, Luggage,
+  AirVent, BedDouble, Briefcase, ChevronDown, Clock, Users, ChevronLeft, ChevronRight, Coffee, Dumbbell, ExternalLink, Luggage,
   Car, ParkingCircle, PawPrint, Plane, Sparkles, UtensilsCrossed, Waves, Wifi, Wine, Accessibility, Shirt, Loader2,
   type LucideIcon,
 } from "lucide-react"
@@ -57,20 +57,6 @@ function hm(minutes?: number) {
   return h ? `${h}h${m ? ` ${m}m` : ""}` : `${m}m`
 }
 
-function Time({ iso, airport }: { iso?: string; airport?: string }) {
-  const p = localParts(iso)
-  if (!p) return <span className="font-semibold text-ink">{airport}</span>
-  return (
-    <span className="tabular">
-      <time dateTime={iso} className="font-display text-lg font-semibold text-ink" title={p.offset ? `Local time (UTC${p.offset === "Z" ? "" : p.offset})` : "Local time"}>
-        {p.time}
-      </time>{" "}
-      <span className="font-medium text-ink">{airport}</span>
-      <span className="block text-meta text-muted-foreground">{p.date}</span>
-    </span>
-  )
-}
-
 export function BookButton({ entityId, label = "Book", disabled }: { entityId?: string; label?: string; disabled?: boolean }) {
   const getToken = useApiToken()
   const [busy, setBusy] = useState(false)
@@ -96,36 +82,61 @@ export function BookButton({ entityId, label = "Book", disabled }: { entityId?: 
     }
   }
   return (
-    <Button size="sm" onClick={go} disabled={disabled || busy} aria-busy={busy || undefined}>
+    <Button size="sm" className="rounded-full px-4" onClick={go} disabled={disabled || busy} aria-busy={busy || undefined}>
       {busy ? <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> : <ExternalLink aria-hidden="true" />}
       {label}<span className="sr-only"> (opens the provider's checkout in a new tab)</span>
     </Button>
   )
 }
 
-function Leg({ label, segments, total, stops }: { label: string; segments: FlightSegment[]; total?: number; stops?: number }) {
+/** Big airport code over its local time, e.g. "JFK / 20:10". */
+function Endpoint({ iso, airport, plus = 0, align = "left" }: { iso?: string; airport?: string; plus?: number; align?: "left" | "right" }) {
+  const p = localParts(iso)
+  return (
+    <span className={cn("tabular", align === "right" && "text-right")}>
+      <span className="block font-display text-2xl font-semibold leading-none tracking-tight text-ink">{airport ?? "—"}</span>
+      {p && (
+        <time dateTime={iso} className="mt-1.5 block font-semibold text-ink" title={p.offset ? `Local time (UTC${p.offset === "Z" ? "" : p.offset}) · ${p.date}` : `Local time · ${p.date}`}>
+          {p.time}
+          {plus > 0 && <sup className="ml-0.5 text-meta font-semibold text-amber-ink" aria-label={`plus ${plus} day${plus > 1 ? "s" : ""}`}>+{plus}</sup>}
+        </time>
+      )}
+      {p && <span className="block text-meta text-muted-foreground">{p.date}</span>}
+    </span>
+  )
+}
+
+function Leg({ label, segments, total, stops, cardCarrier }: { label: string; segments: FlightSegment[]; total?: number; stops?: number; cardCarrier?: string }) {
   const [open, setOpen] = useState(false)
   if (!segments.length) return null
   const first = segments[0], last = segments[segments.length - 1]
   const plus = dayDiff(first.departure.at, last.arrival.at)
   const via = segments.slice(0, -1).map((s) => s.arrival.airport).filter(Boolean)
+  // Name the airline only when it differs from the one in the card header.
+  const carrier = first.carrier_name || first.carrier
+  const showCarrier = carrier && carrier !== cardCarrier ? carrier : null
   return (
-    <div>
-      <p className="mb-1 text-meta font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
-        <Time iso={first.departure.at} airport={first.departure.airport} />
-        <div className="min-w-0 text-center text-meta text-muted-foreground">
-          <span className="block tabular">{hm(total)}</span>
-          <span className="relative my-1 block h-px bg-gray-strong" aria-hidden="true">
-            {via.map((_, i) => <span key={i} className="absolute top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-amber-ink" style={{ left: `${((i + 1) / (via.length + 1)) * 100}%` }} />)}
-          </span>
-          <span className="block">{stops ? `${stops} stop${stops > 1 ? "s" : ""} · ${via.join(", ")}` : "Nonstop"}</span>
-        </div>
-        <span className="text-right">
-          <Time iso={last.arrival.at} airport={last.arrival.airport} />
-          {plus > 0 && <span className="text-meta font-semibold text-amber-ink">+{plus} day{plus > 1 ? "s" : ""}</span>}
-        </span>
+    <div className="px-3 py-3">
+      <div className="mb-2 flex items-baseline justify-between gap-2 text-meta">
+        <span className="font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+        <span className="truncate text-muted-foreground tabular">{[showCarrier, segments.map((s) => s.flight_number).filter(Boolean).join(" · ")].filter(Boolean).join(" ")}</span>
       </div>
+      <div className="grid grid-cols-[auto_1fr_auto] items-start gap-3">
+        <Endpoint iso={first.departure.at} airport={first.departure.airport} />
+        <div className="relative mt-2.5 min-w-0" aria-hidden="true">
+          <span className="absolute inset-x-0 top-1/2 border-t border-dashed border-gray-strong" />
+          {via.map((_, i) => <span key={i} className="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-amber-ink" style={{ left: `${((i + 1) / (via.length + 1)) * 100}%` }} />)}
+          {hm(total) && (
+            <span className="relative mx-auto flex w-fit items-center gap-1 rounded-full bg-card px-2 py-0.5 text-meta font-medium text-ink ring-1 ring-border tabular">
+              <Clock className="size-3 text-muted-foreground" />{hm(total)}
+            </span>
+          )}
+        </div>
+        <Endpoint iso={last.arrival.at} airport={last.arrival.airport} plus={plus} align="right" />
+      </div>
+      <p className={cn("mt-1 text-meta", stops ? "font-medium text-amber-ink" : "text-muted-foreground")}>
+        {stops ? `${stops} stop${stops > 1 ? "s" : ""} · ${via.join(", ")}` : "Nonstop"}
+      </p>
       {segments.length > 0 && (
         <button
           type="button"
@@ -167,33 +178,44 @@ function Leg({ label, segments, total, stops }: { label: string; segments: Fligh
 export function FlightCard({ f }: { f: Flight }) {
   const total = money(f.price, f.price?.total ?? f.price?.amount)
   const per = f.price?.per_traveler != null && f.price.per_traveler !== f.price.total ? money(f.price, f.price.per_traveler) : null
+  const segs = f.segments ?? []
+  const from = segs[0]?.departure.airport, to = segs[segs.length - 1]?.arrival.airport
+  const depart = localParts(segs[0]?.departure.at), back = localParts(f.return_segments?.[0]?.departure.at)
+  const travelers = f.price?.per_traveler && f.price.total ? Math.round(f.price.total / f.price.per_traveler) : undefined
   return (
-    <li className="rounded-xl border bg-card p-4">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-flight-tint"><Plane className="size-4 text-flight-ink" aria-hidden="true" /></span>
-          <div className="min-w-0">
-            <p className="truncate font-semibold">{f.carrier_name || f.carrier || "Flight"}</p>
-            <p className="text-meta text-muted-foreground">{[f.cabin_class, f.fare_family?.toLowerCase()].filter(Boolean).join(" · ")}</p>
-          </div>
+    <li className="rounded-2xl border bg-card p-3 shadow-xs transition-shadow hover:shadow-sm">
+      <div className="flex min-w-0 items-center gap-3 px-1 pb-3 pt-1">
+        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-flight-tint"><Plane className="size-5 text-flight-ink" aria-hidden="true" /></span>
+        <div className="min-w-0">
+          <p className="truncate font-semibold leading-snug">
+            {from && to ? <>{from} <span className="text-muted-foreground" aria-label={f.return_segments?.length ? "round trip to" : "to"}>{f.return_segments?.length ? "⇄" : "→"}</span> {to}</> : f.carrier_name || f.carrier || "Flight"}
+            {from && to && (f.carrier_name || f.carrier) && <span className="font-normal text-muted-foreground"> · {f.carrier_name || f.carrier}</span>}
+          </p>
+          <p className="text-meta text-muted-foreground tabular">
+            {[depart && (back ? `${depart.date} – ${back.date}` : depart.date), f.return_segments?.length ? "Round trip" : "One way", f.cabin_class, f.fare_family?.toLowerCase()].filter(Boolean).join(" · ")}
+          </p>
         </div>
-        {total && (
-          <div className="text-right">
-            <p className="font-display text-lg font-semibold tabular">{total}</p>
-            <p className="text-meta text-muted-foreground">{per ? `${per} per traveler · ` : ""}taxes incl.</p>
-          </div>
-        )}
       </div>
-      <div className="space-y-4">
-        <Leg label={f.return_segments?.length ? "Outbound" : "Flight"} segments={f.segments ?? []} total={f.duration_minutes} stops={f.stops} />
-        {!!f.return_segments?.length && <Leg label="Return" segments={f.return_segments} total={f.return_duration_minutes} stops={f.return_stops} />}
+      <div className="divide-y divide-dashed rounded-xl bg-muted/60">
+        <Leg label={f.return_segments?.length ? "Outbound" : "Flight"} segments={segs} total={f.duration_minutes} stops={f.stops} cardCarrier={f.carrier_name || f.carrier} />
+        {!!f.return_segments?.length && <Leg label="Return" segments={f.return_segments} total={f.return_duration_minutes} stops={f.return_stops} cardCarrier={f.carrier_name || f.carrier} />}
       </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-        <div className="flex flex-wrap gap-1.5">
+      {(f.baggage?.cabin || f.baggage?.checked || f.refundable === false) && (
+        <div className="flex flex-wrap gap-1.5 px-1 pt-3">
           {f.baggage?.cabin && <Badge variant="neutral"><Briefcase aria-hidden="true" />{f.baggage.cabin}</Badge>}
           {f.baggage?.checked && <Badge variant={/no checked/i.test(f.baggage.checked) ? "estimate" : "neutral"}><Luggage aria-hidden="true" />{f.baggage.checked}</Badge>}
           {f.refundable === false && <Badge variant="neutral">Non-refundable</Badge>}
         </div>
+      )}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1 pb-1">
+        {total ? (
+          <div>
+            <p className="font-display text-xl font-semibold leading-tight tabular">{per ?? total}{per && <span className="text-meta font-normal text-muted-foreground"> per traveler</span>}</p>
+            <p className="inline-flex items-center gap-1 text-meta text-muted-foreground tabular">
+              {per && <>{total} total{travelers ? <> · <Users className="size-3" aria-hidden="true" />{travelers}<span className="sr-only"> travelers</span></> : null} · </>}taxes incl.
+            </p>
+          </div>
+        ) : <span />}
         {f.bookable && <BookButton entityId={f.id} />}
         {!f.bookable && f.booking_url && (
           <a href={f.booking_url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-raspberry">Book<span className="sr-only"> (opens in a new tab)</span></a>
@@ -226,7 +248,7 @@ function Carousel({ hotel }: { hotel: Hotel }) {
   const usable = photos.filter((_, idx) => !failed.has(idx))
   if (!usable.length) {
     return (
-      <div className="flex aspect-[4/3] w-full items-center justify-center bg-stay-tint sm:w-56 sm:shrink-0" aria-hidden="true">
+      <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl bg-stay-tint sm:w-56 sm:shrink-0" aria-hidden="true">
         <BedDouble className="size-6 text-stay-ink" />
       </div>
     )
@@ -234,7 +256,7 @@ function Carousel({ hotel }: { hotel: Hotel }) {
   const idx = i % photos.length
   const step = (d: number) => setI((v) => (v + d + photos.length) % photos.length)
   return (
-    <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted sm:w-56 sm:shrink-0" aria-roledescription="carousel" aria-label={`Photos of ${hotel.name}`}>
+    <div className="group/photo relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-muted sm:w-56 sm:shrink-0" aria-roledescription="carousel" aria-label={`Photos of ${hotel.name}`}>
       <img
         key={idx}
         src={photos[idx].url}
@@ -246,13 +268,18 @@ function Carousel({ hotel }: { hotel: Hotel }) {
       />
       {photos.length > 1 && (
         <>
-          <button type="button" onClick={() => step(-1)} aria-label="Previous photo" className="absolute left-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 pointer-coarse:size-10">
+          <button type="button" onClick={() => step(-1)} aria-label="Previous photo" className="absolute left-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 group-hover/photo:opacity-100 pointer-coarse:size-10 pointer-coarse:opacity-100">
             <ChevronLeft className="size-4" aria-hidden="true" />
           </button>
-          <button type="button" onClick={() => step(1)} aria-label="Next photo" className="absolute right-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 pointer-coarse:size-10">
+          <button type="button" onClick={() => step(1)} aria-label="Next photo" className="absolute right-1.5 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 group-hover/photo:opacity-100 pointer-coarse:size-10 pointer-coarse:opacity-100">
             <ChevronRight className="size-4" aria-hidden="true" />
           </button>
-          <span className="absolute bottom-1.5 right-1.5 rounded bg-black/55 px-1.5 text-[0.6875rem] text-white tabular">{idx + 1}/{photos.length}</span>
+          <span className="absolute inset-x-0 bottom-2 flex justify-center gap-1" aria-hidden="true">
+            {photos.slice(0, 6).map((_, d) => (
+              <span key={d} className={cn("size-1.5 rounded-full bg-white/60 shadow-sm transition-all", d === Math.min(idx, 5) && "w-3 bg-white")} />
+            ))}
+          </span>
+          <span className="sr-only" aria-live="polite">Photo {idx + 1} of {photos.length}</span>
         </>
       )}
     </div>
@@ -265,13 +292,11 @@ export function HotelCard({ h }: { h: Hotel }) {
   const was = h.price?.published && h.price.published > (h.price.total ?? h.price.amount) ? money(h.price, h.price.published) : null
   const amenities = (h.amenities ?? []).filter((a) => AMENITY_ICON[a]).slice(0, 7)
   return (
-    <li className="relative flex flex-col overflow-hidden rounded-xl border bg-card sm:flex-row">
-      <Carousel hotel={h} />
-      <BookmarkButton entity={h} kind="hotel" className="absolute left-2 top-2" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3">
+    <li className="flex flex-col-reverse gap-3 py-4 first:pt-1 sm:flex-row">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex flex-wrap items-start justify-between gap-x-3">
           <div className="min-w-0">
-            <p className="font-semibold leading-snug [overflow-wrap:anywhere]">{h.name}</p>
+            <p className="flex items-start gap-1.5 font-display text-base font-semibold leading-snug [overflow-wrap:anywhere]"><BedDouble className="mt-0.5 size-4 shrink-0 text-stay-ink" aria-hidden="true" />{h.name}</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-meta text-muted-foreground">
               {h.star_rating != null && (
                 <span className="tabular" aria-label={`${h.star_rating}-star hotel`}>
@@ -315,6 +340,10 @@ export function HotelCard({ h }: { h: Hotel }) {
           {h.bookable && <BookButton entityId={h.id} />}
         </div>
       </div>
+      <div className="relative">
+        <Carousel hotel={h} />
+        <BookmarkButton entity={h} kind="hotel" className="absolute right-2 top-2" />
+      </div>
     </li>
   )
 }
@@ -323,7 +352,7 @@ export function CarCard({ c }: { c: CarRental }) {
   const price = money(c.price)
   const pick = localParts(c.pickup_at), drop = localParts(c.dropoff_at)
   return (
-    <li className="flex items-start gap-3 rounded-xl border bg-card p-3">
+    <li className="flex items-start gap-3 rounded-2xl border bg-card p-3 shadow-xs">
       {c.image_url ? (
         <img src={c.image_url} alt="" loading="lazy" className="h-16 w-24 shrink-0 rounded-md bg-muted object-contain" />
       ) : (

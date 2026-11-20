@@ -8,6 +8,41 @@ import { TravelMapComponent } from '@/components/TravelMapComponent';
 import ChatComponent from '@/components/ChatComponent';
 import { useChat } from '@/hooks/useChat';
 import { cn } from '@/lib/utils';
+import { displayLocale } from '@/lib/format';
+import { destinationOf, type ChatMessage } from '@/components/chat/types';
+
+/** "20–25 Dec", "28 Dec – 2 Jan" from ISO dates. */
+function dateRange(start?: string, end?: string) {
+  const d = (x?: string) => (x ? new Date(`${x}T12:00:00`) : null);
+  const a = d(start), b = d(end);
+  if (!a || Number.isNaN(a.getTime())) return null;
+  const fmt = (x: Date, o: Intl.DateTimeFormatOptions) => x.toLocaleDateString(displayLocale(), o);
+  if (!b || Number.isNaN(b.getTime()) || start === end) return fmt(a, { day: 'numeric', month: 'short' });
+  if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) return `${a.getDate()}–${fmt(b, { day: 'numeric', month: 'short' })}`;
+  return `${fmt(a, { day: 'numeric', month: 'short' })} – ${fmt(b, { day: 'numeric', month: 'short' })}`;
+}
+
+/** Destination · dates · travelers from the latest answer, as one segmented pill. */
+function TripBar({ messages }: { messages: ChatMessage[] }) {
+  const latest = [...messages].reverse().find((m) => m.role === 'assistant' && (m.data?.trip || m.data?.itinerary));
+  if (!latest?.data) return null;
+  const it = latest.data.itinerary?.trip;
+  const trip = latest.data.trip;
+  const place = (destinationOf(latest.data)?.name ?? it?.destination?.name)?.split(',')[0]?.trim();
+  const dates = dateRange(trip?.start_date ?? it?.start_date, trip?.end_date ?? it?.end_date);
+  const adults = trip?.adults ?? it?.travelers?.adults;
+  const kids = trip?.children ?? it?.travelers?.children ?? 0;
+  const people = adults ? adults + kids : null;
+  const parts = [place, dates, people ? `${people} traveler${people > 1 ? 's' : ''}` : null].filter(Boolean) as string[];
+  if (!parts.length) return null;
+  return (
+    <p className="hidden min-w-0 items-center overflow-hidden rounded-full border bg-card text-sm text-ink shadow-xs sm:inline-flex" aria-label={`Trip: ${parts.join(', ')}`}>
+      {parts.map((t, i) => (
+        <span key={i} className={cn('truncate px-3 py-1 tabular', i > 0 && 'border-l', i === 0 && 'font-semibold')}>{t}</span>
+      ))}
+    </p>
+  );
+}
 
 /** Router state other pages can pass to start a trip (see HomePage). */
 type LaunchState = { prompt?: string } | null;
@@ -58,6 +93,7 @@ function ChatArea({ id, mapToggle, openMap }: { id: string; mapToggle: React.Rea
         ) : (
           <span className="px-2 text-sm text-muted-foreground">New trip</span>
         )}
+        <TripBar messages={chat.messages} />
         {mapToggle && (
           <span className="flex items-center gap-1">
             {detectedLocations.length > 0 && (
