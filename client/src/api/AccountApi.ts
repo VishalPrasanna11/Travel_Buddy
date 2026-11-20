@@ -6,7 +6,7 @@ import { api, useApiToken } from "@/api/ConversationsApi";
 import { setDisplayLocale } from "@/lib/format";
 import type { Hotel, Place, ResponseData } from "@/components/chat/types";
 
-const API_BASE_URL = import.meta.env.VITE_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_BASE_URL ?? "";
 
 export type Preferences = {
   locale: string | null;

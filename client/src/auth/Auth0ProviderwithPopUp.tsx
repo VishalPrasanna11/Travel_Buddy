@@ -12,11 +12,13 @@ const navigate = useNavigate();
 
 const domain = import.meta.env.VITE_AUTH0_DOMAIN;
 const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
-const redirectUri = import.meta.env.VITE_AUTH0_REDIRECT_URI;
+// Return to the site the user signed in from (travelbuddy.live, www, or the
+// Heroku URL); each origin must be in Auth0's Allowed Callback URLs.
+const redirectUri = window.location.origin;
 const audience = import.meta.env.VITE_AUTH0_AUDIENCE;
-if (!domain || !clientId || !redirectUri || !audience) {
+if (!domain || !clientId || !audience) {
     throw new Error(
-        "Please define the AUTH0_DOMAIN, AUTH0_CLIENT_ID, and AUTH0_REDIRECT_URI environment variables"
+        "Please define the VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID and VITE_AUTH0_AUDIENCE environment variables"
     );
 }
          

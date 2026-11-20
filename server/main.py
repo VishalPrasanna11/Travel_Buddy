@@ -75,6 +75,8 @@ origins = [
     "http://localhost:8000",
     "http://localhost:5173",
     os.getenv("FRONTEND_URL", ""),
+    "https://travelbuddy.live",
+    "https://www.travelbuddy.live",
     "https://travelbuddyai-5b869d0b00e5.herokuapp.com",
 ]
 

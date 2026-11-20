@@ -1,6 +1,6 @@
 import type { AgentKey, AgentState, ChatErrorKind, SectionKey } from "@/components/chat/types";
 
-const API_BASE_URL = import.meta.env.VITE_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_BASE_URL ?? "";
 
 /** Longest we wait for one answer before telling the user it timed out. */
 export const ASK_TIMEOUT_MS = 120_000;

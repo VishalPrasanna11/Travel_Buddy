@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { InlineDatePicker } from "@/components/ui/inline-date-picker";
 import { cn } from "@/lib/utils";
 
-const API_BASE_URL = import.meta.env.VITE_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_BASE_URL ?? "";
 
 /**
  * Shape returned by GET /api/flights/search (server/routes/flightRoute.py,

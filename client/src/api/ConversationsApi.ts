@@ -3,7 +3,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 
 import type { ChatMessage, ResponseData } from "@/components/chat/types";
 
-const API_BASE_URL = import.meta.env.VITE_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_BASE_URL ?? "";
 
 /**
  * Bearer token for API calls. Returns undefined when signed out, and never
