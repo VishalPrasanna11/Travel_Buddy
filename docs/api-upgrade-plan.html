@@ -1,0 +1,860 @@
+<title>TravelBuddy API Upgrade Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single-column document with accent sidebar markers */
+:root {
+  --bg: #FAFAF9;
+  --fg: #1C1917;
+  --muted: #78716C;
+  --border: #E7E5E4;
+  --surface: #FFFFFF;
+  --primary: #AA4465;
+  --primary-soft: #AA446512;
+  --amber: #F5A65B;
+  --amber-soft: #F5A65B15;
+  --teal: #96C3CE;
+  --teal-soft: #96C3CE18;
+  --green: #6CAE75;
+  --green-soft: #6CAE7515;
+  --red: #EF4444;
+  --red-soft: #EF444410;
+  --code-bg: #F5F5F4;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'DM Mono', 'SF Mono', monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1A1917;
+    --fg: #E7E5E4;
+    --muted: #A8A29E;
+    --border: #33302E;
+    --surface: #242220;
+    --primary: #D4698A;
+    --primary-soft: #D4698A18;
+    --amber: #F5A65B;
+    --amber-soft: #F5A65B18;
+    --teal: #96C3CE;
+    --teal-soft: #96C3CE15;
+    --green: #7BC484;
+    --green-soft: #7BC48415;
+    --red: #F87171;
+    --red-soft: #F8717115;
+    --code-bg: #2A2826;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1A1917;
+  --fg: #E7E5E4;
+  --muted: #A8A29E;
+  --border: #33302E;
+  --surface: #242220;
+  --primary: #D4698A;
+  --primary-soft: #D4698A18;
+  --amber: #F5A65B;
+  --amber-soft: #F5A65B18;
+  --teal: #96C3CE;
+  --teal-soft: #96C3CE15;
+  --green: #7BC484;
+  --green-soft: #7BC48415;
+  --red: #F87171;
+  --red-soft: #F8717115;
+  --code-bg: #2A2826;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  line-height: 1.65;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 2rem 4rem;
+}
+*, *::before, *::after { box-sizing: border-box; }
+.wrap { max-width: 820px; margin: 0 auto; }
+
+/* Header */
+.page-header { margin-bottom: 3rem; }
+.page-header h1 {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-wrap: balance;
+  margin: 0 0 0.5rem;
+}
+.page-header .subtitle {
+  color: var(--muted);
+  font-size: 1.05rem;
+  margin: 0;
+}
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.25rem 0.65rem;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+.badge--primary { background: var(--primary-soft); color: var(--primary); }
+.badge--amber { background: var(--amber-soft); color: var(--amber); }
+.badge--teal { background: var(--teal-soft); color: var(--teal); }
+.badge--green { background: var(--green-soft); color: var(--green); }
+
+/* Table of Contents */
+.toc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2.5rem;
+}
+.toc h2 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+}
+.toc ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.toc li { font-size: 0.92rem; }
+.toc a {
+  color: var(--primary);
+  text-decoration: none;
+}
+.toc a:hover { text-decoration: underline; }
+
+/* Sections */
+section { margin-bottom: 3rem; }
+section > h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-wrap: balance;
+}
+section > h2 .num {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 6px;
+  padding: 0.2em 0.55em;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+section > .section-desc {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 0.25rem 0 1.25rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 1.75rem 0 0.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+h3 .api-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.15em 0.5em;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.api-routestack .api-tag { background: var(--amber-soft); color: var(--amber); }
+.api-google .api-tag { background: var(--teal-soft); color: var(--teal); }
+.api-openweather .api-tag { background: var(--green-soft); color: var(--green); }
+.api-langgraph .api-tag { background: var(--primary-soft); color: var(--primary); }
+
+/* Comparison tables */
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  margin: 0.75rem 0 1.25rem;
+}
+.compare-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+.compare-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.compare-table tr:last-child td { border-bottom: none; }
+.status-cell { white-space: nowrap; }
+.status { font-size: 0.78rem; font-weight: 500; padding: 0.15em 0.5em; border-radius: 4px; white-space: nowrap; }
+.status--used { background: var(--green-soft); color: var(--green); }
+.status--partial { background: var(--amber-soft); color: var(--amber); }
+.status--unused { background: var(--red-soft); color: var(--red); }
+.status--new { background: var(--primary-soft); color: var(--primary); }
+
+@media (max-width: 600px) {
+  .compare-table { font-size: 0.82rem; }
+  .compare-table th, .compare-table td { padding: 0.45rem 0.5rem; }
+}
+
+/* Code blocks */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+pre {
+  background: var(--code-bg);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  margin: 0.75rem 0 1.25rem;
+}
+pre code { background: none; padding: 0; }
+
+/* Phase cards */
+.phase-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin: 1rem 0;
+}
+.phase-card h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+.phase-card ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.phase-card li { margin-bottom: 0.3rem; font-size: 0.9rem; }
+.phase-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.4rem;
+}
+.phase-label--p0 { color: var(--red); }
+.phase-label--p1 { color: var(--amber); }
+.phase-label--p2 { color: var(--green); }
+
+/* Requirement mapping */
+.req-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.req-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  border-left: 3px solid var(--primary);
+}
+.req-item h4 {
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+}
+.req-item p {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+.req-item .tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+.req-item .tag {
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.15em 0.5em;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+}
+.tag--rs { background: var(--amber-soft); color: var(--amber); }
+.tag--gp { background: var(--teal-soft); color: var(--teal); }
+.tag--ow { background: var(--green-soft); color: var(--green); }
+.tag--lg { background: var(--primary-soft); color: var(--primary); }
+
+/* Divider */
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2.5rem 0;
+}
+p { margin: 0.5rem 0; }
+ul, ol { padding-left: 1.25rem; }
+li { margin-bottom: 0.25rem; }
+strong { font-weight: 600; }
+
+/* Endpoint list */
+.endpoint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.5rem 0 1rem;
+}
+.endpoint {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.endpoint .method {
+  font-weight: 600;
+  font-size: 0.72rem;
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  min-width: 3em;
+  text-align: center;
+}
+.endpoint .method--post { background: var(--green-soft); color: var(--green); }
+.endpoint .method--get { background: var(--teal-soft); color: var(--teal); }
+.endpoint .method--del { background: var(--red-soft); color: var(--red); }
+.endpoint .method--sse { background: var(--primary-soft); color: var(--primary); }
+.endpoint .path { color: var(--fg); }
+.endpoint .desc { color: var(--muted); font-family: var(--font-body); font-size: 0.82rem; }
+</style>
+
+<div class="wrap">
+
+<header class="page-header">
+  <h1>TravelBuddy API Upgrade Plan</h1>
+  <p class="subtitle">Full audit of current API usage, underutilized capabilities, and a phased upgrade roadmap aligned with the UI makeover requirements.</p>
+  <div class="meta-row">
+    <span class="badge badge--amber">RouteStack</span>
+    <span class="badge badge--teal">Google Places</span>
+    <span class="badge badge--green">OpenWeather</span>
+    <span class="badge badge--primary">LangGraph + OpenAI</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#audit">Current API Usage Audit</a></li>
+    <li><a href="#underutilized">Underutilized Capabilities</a></li>
+    <li><a href="#requirements">UI Requirements → API Mapping</a></li>
+    <li><a href="#new-endpoints">New Server Endpoints Needed</a></li>
+    <li><a href="#roadmap">Phased Upgrade Roadmap</a></li>
+    <li><a href="#sources">Sources</a></li>
+  </ol>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="audit">
+  <h2><span class="num">01</span> Current API Usage Audit</h2>
+  <p class="section-desc">What each API does today, which endpoints are called, and which response fields are consumed.</p>
+
+  <h3 class="api-routestack"><span class="api-tag">RouteStack</span> Flight + Hotel Search</h3>
+  <table class="compare-table">
+    <thead><tr><th>Endpoint</th><th>File</th><th>Fields Used</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>POST /mcp/auth/partner-token</code></td>
+        <td>routestack_auth.py</td>
+        <td>token (cached 24h)</td>
+        <td class="status-cell"><span class="status status--used">Used</span></td>
+      </tr>
+      <tr>
+        <td><code>POST /mcp/flight/locations</code></td>
+        <td>flight_search.py</td>
+        <td>code (airport IATA)</td>
+        <td class="status-cell"><span class="status status--partial">Partial</span></td>
+      </tr>
+      <tr>
+        <td><code>POST /mcp/flight/search</code></td>
+        <td>flight_search.py</td>
+        <td>flights[], ourprice, stops, flightCode, triptime, departureTime, arrivalTime</td>
+        <td class="status-cell"><span class="status status--partial">Partial</span></td>
+      </tr>
+      <tr>
+        <td><code>POST /mcp/hotel/search-destinations</code></td>
+        <td>hotel_search.py</td>
+        <td>id, type, coordinates</td>
+        <td class="status-cell"><span class="status status--used">Used</span></td>
+      </tr>
+      <tr>
+        <td><code>POST /mcp/hotel/search-hotels</code></td>
+        <td>hotel_search.py</td>
+        <td>name, address, starRating, guestRating, ourprice, images, facilities</td>
+        <td class="status-cell"><span class="status status--partial">Partial</span></td>
+      </tr>
+      <tr>
+        <td><code>/mcp/car/*</code></td>
+        <td>—</td>
+        <td>—</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+      <tr>
+        <td><code>/mcp/activity/*</code></td>
+        <td>—</td>
+        <td>— (Q4 2026 rollout)</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p><strong>Key gaps:</strong> Flight results discard <code>fareSourceCode</code> (needed for booking URLs), <code>baggageInfo</code>, <code>layoverTime</code>, and UTC offsets. Hotel results discard <code>correlationId</code>/<code>token</code> at the UI level (needed for deep-link booking), <code>cancellationPolicy</code>, <code>publishedRate</code> vs <code>ourprice</code> breakdown, and coordinates. No car rental or activity search is wired up.</p>
+
+  <h3 class="api-google"><span class="api-tag">Google Places</span> Attractions + Restaurants</h3>
+  <table class="compare-table">
+    <thead><tr><th>Endpoint</th><th>File</th><th>Field Mask</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>POST places:searchText</code></td>
+        <td>google_places_api.py</td>
+        <td>displayName, formattedAddress, rating, userRatingCount, types, location, photos</td>
+        <td class="status-cell"><span class="status status--partial">Partial</span></td>
+      </tr>
+      <tr>
+        <td><code>POST places:searchText</code></td>
+        <td>google_restaurant_api.py</td>
+        <td>Same mask + <code>includedType: restaurant</code></td>
+        <td class="status-cell"><span class="status status--partial">Partial</span></td>
+      </tr>
+      <tr>
+        <td><code>GET places/{id}</code></td>
+        <td>—</td>
+        <td>— (Place Details never called)</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+      <tr>
+        <td><code>GET places:searchNearby</code></td>
+        <td>—</td>
+        <td>—</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p><strong>Key gaps:</strong> Photo URLs expose the server's API key in the URL (<code>?key=...</code>). No photo proxy. Attribution data not collected. Missing fields: <code>regularOpeningHours</code>, <code>priceLevel</code>, <code>editorialSummary</code>, <code>websiteUri</code>, <code>googleMapsUri</code>, <code>googleMapsLinks</code>, <code>reviews</code>, <code>internationalPhoneNumber</code>. The new API's <code>places/{id}</code> (Place Details) is never called — only Text Search.</p>
+
+  <h3 class="api-openweather"><span class="api-tag">OpenWeather</span> Weather Data</h3>
+  <table class="compare-table">
+    <thead><tr><th>Endpoint</th><th>File</th><th>Fields Used</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>GET geo/1.0/direct</code></td>
+        <td>weather_tool.py</td>
+        <td>lat, lon (geocode)</td>
+        <td class="status-cell"><span class="status status--used">Used</span></td>
+      </tr>
+      <tr>
+        <td><code>GET onecall (3.0)</code></td>
+        <td>weather_tool.py</td>
+        <td>current.temp, weather[0].description, humidity, wind_speed</td>
+        <td class="status-cell"><span class="status status--partial">Partial</span></td>
+      </tr>
+      <tr>
+        <td>Daily forecast (8 days)</td>
+        <td>—</td>
+        <td>— (returned but ignored)</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+      <tr>
+        <td><code>GET onecall/timemachine</code></td>
+        <td>—</td>
+        <td>— (historical archive)</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+      <tr>
+        <td><code>GET onecall/day_summary</code></td>
+        <td>—</td>
+        <td>— (daily aggregation)</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p><strong>Key gaps:</strong> <code>OPENWEATHER_API_KEY</code> isn't set on Heroku — every request falls back to the simulated "22°C clear skies" template. Even when the API key is set, the <code>daily[]</code> array from One Call 3.0 (8-day forecast with high/low/condition/precip) is returned but completely ignored — only <code>current</code> is read. The daily aggregation endpoint (great for specific trip-date forecasts going 1.5 years ahead) is never called.</p>
+
+  <h3 class="api-langgraph"><span class="api-tag">LangGraph</span> Agent Orchestration</h3>
+  <table class="compare-table">
+    <thead><tr><th>Feature</th><th>File</th><th>Current Use</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>StateGraph + MemorySaver</td>
+        <td>rootAgent.py</td>
+        <td>Root → {explore, pre_travel, planning} → END</td>
+        <td class="status-cell"><span class="status status--used">Used</span></td>
+      </tr>
+      <tr>
+        <td><code>graph.ainvoke()</code></td>
+        <td>rootAgent.py</td>
+        <td>Synchronous wait for full result</td>
+        <td class="status-cell"><span class="status status--used">Used</span></td>
+      </tr>
+      <tr>
+        <td><code>graph.astream()</code></td>
+        <td>—</td>
+        <td>— (node-level streaming)</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+      <tr>
+        <td><code>graph.astream_events(v2)</code></td>
+        <td>—</td>
+        <td>— (token-level streaming)</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+      <tr>
+        <td>Parallel node execution</td>
+        <td>—</td>
+        <td>— (agents run sequentially)</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+      <tr>
+        <td>GPT-4o tool calling</td>
+        <td>planning/agent.py</td>
+        <td>Tool bindings for flight_search, hotel_search, search_restaurants, etc.</td>
+        <td class="status-cell"><span class="status status--used">Used</span></td>
+      </tr>
+      <tr>
+        <td>Structured output / response_format</td>
+        <td>—</td>
+        <td>—</td>
+        <td class="status-cell"><span class="status status--unused">Unused</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p><strong>Key gaps:</strong> The entire agent pipeline runs as a single synchronous <code>ainvoke()</code>, with keepalive spaces masking the 30-40 second wait. LangGraph's <code>astream()</code> can emit after each node completes (flights done → hotels done → …), and <code>astream_events(v2)</code> can stream individual LLM tokens. Neither is used. Sub-agents run sequentially — flights, then hotels, then restaurants — when flights and hotels could run in parallel. GPT-4o's structured output mode (<code>response_format</code>) isn't used for the final itinerary, so the LLM returns markdown prose instead of typed JSON.</p>
+</section>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="underutilized">
+  <h2><span class="num">02</span> Underutilized API Capabilities</h2>
+  <p class="section-desc">What each API can do that you're not using yet — features you're already paying for.</p>
+
+  <h3 class="api-routestack"><span class="api-tag">RouteStack</span> Untapped Features</h3>
+  <ul>
+    <li><strong>Car Rentals</strong> — <code>/mcp/car/*</code> endpoints for pickup/dropoff search, pricing, and booking. Already available in the API.</li>
+    <li><strong>Activities &amp; Vacation Rentals</strong> — Rolling out Q4 2026. Activities (tours, experiences) would replace or supplement Google Places for attraction recommendations.</li>
+    <li><strong>Stripe ACP (Agentic Commerce Protocol)</strong> — Native in-chat payment flow announced Oct 2026. Enables real booking without leaving the app. Currently in sandbox.</li>
+    <li><strong>Flight booking deep links</strong> — The <code>fareSourceCode</code> from search results, combined with <code>correlationId</code>, can generate provider booking URLs. Currently collected but never surfaced.</li>
+    <li><strong>Hotel booking deep links</strong> — <code>correlationId</code> + <code>token</code> from hotel search are saved in the tool response but discarded at the UI layer. These enable direct booking flows.</li>
+    <li><strong>Price breakdown fields</strong> — <code>baseFare</code> vs <code>ourprice</code> vs <code>totalFare</code> (flights), <code>baseprice</code> vs <code>ourprice</code> vs <code>publishedRate</code> + <code>saving</code> (hotels) — all returned, partially consumed.</li>
+    <li><strong>Hotel facilities &amp; images</strong> — Full facilities array and multiple photo URLs are returned; only the first photo and first 10 facility names are used.</li>
+  </ul>
+
+  <h3 class="api-google"><span class="api-tag">Google Places</span> Untapped Features</h3>
+  <ul>
+    <li><strong>Place Details API</strong> — Never called. Provides <code>regularOpeningHours</code> (open on trip dates?), <code>reviews</code>, <code>editorialSummary</code>, <code>websiteUri</code>, <code>internationalPhoneNumber</code>, and richer photo arrays.</li>
+    <li><strong>Nearby Search</strong> — Not used. Better for "restaurants near my hotel" than Text Search with a city name.</li>
+    <li><strong>Field mask expansion</strong> — Current mask misses: <code>priceLevel</code>, <code>editorialSummary</code>, <code>regularOpeningHours</code>, <code>googleMapsUri</code>, <code>googleMapsLinks</code>, <code>websiteUri</code>, <code>reviews</code>, <code>internationalPhoneNumber</code>, <code>addressDescriptor</code> (new 2026).</li>
+    <li><strong>Photo attribution</strong> — <code>photos[].authorAttributions</code> is returned but completely ignored. Google requires attribution display.</li>
+    <li><strong>Photo proxy</strong> — Photo URLs currently embed the server API key: <code>?key={api_key}</code>. Should be proxied server-side.</li>
+    <li><strong>googleMapsLinks</strong> — Direct Google Maps links for directions, reviews, photos. Available since late 2024.</li>
+    <li><strong>180+ new place types</strong> (Feb 2026) — Filtering by specific types like <code>historical_landmark</code>, <code>hiking_area</code>, <code>beach</code> for better categorized recommendations.</li>
+    <li><strong>Autocomplete</strong> — For destination input on the frontend, replace the current free-text to airport-code pipeline.</li>
+  </ul>
+
+  <h3 class="api-openweather"><span class="api-tag">OpenWeather</span> Untapped Features</h3>
+  <ul>
+    <li><strong>8-day daily forecast</strong> — Already returned in every One Call 3.0 response (<code>daily[]</code>), completely ignored. Each day includes <code>temp.min</code>, <code>temp.max</code>, <code>weather[].icon</code>, <code>pop</code> (precipitation probability), <code>humidity</code>, <code>wind_speed</code>, <code>sunrise</code>/<code>sunset</code>.</li>
+    <li><strong>Daily Aggregation endpoint</strong> — <code>/onecall/day_summary</code> provides forecast or historical data for a <em>specific date</em>, up to 1.5 years ahead. Perfect for trip-date forecasts.</li>
+    <li><strong>Historical archive</strong> — <code>/onecall/timemachine</code> for 47+ years of historical weather. "What was the weather in Lisbon in March historically?" — useful for packing recommendations.</li>
+    <li><strong>Weather condition codes</strong> — <code>weather[].id</code> codes (800 = clear, 500 = rain, etc.) enable icon mapping without text parsing.</li>
+    <li><strong>UV index</strong> — <code>current.uvi</code> and <code>daily[].uvi</code> for sun protection recommendations.</li>
+    <li><strong>Alerts</strong> — Currently excluded (<code>exclude=minutely,hourly,alerts</code>). Government weather alerts for the destination could be valuable.</li>
+  </ul>
+
+  <h3 class="api-langgraph"><span class="api-tag">LangGraph</span> Untapped Features</h3>
+  <ul>
+    <li><strong><code>astream()</code></strong> — Emits state after each node completes. "Flights found → Hotels searching…" progress without keepalive hacks.</li>
+    <li><strong><code>astream_events(v2)</code></strong> — Token-level streaming from inside nodes. The final narrative answer can type in word by word.</li>
+    <li><strong>Parallel node execution</strong> — LangGraph supports fan-out: flight search, hotel search, restaurant search, and weather lookup can all run simultaneously, cutting total latency from ~sequential to ~longest-single-call.</li>
+    <li><strong>Structured output</strong> — GPT-4o's <code>response_format: { type: "json_schema" }</code> guarantees the itinerary comes back as typed JSON, not markdown prose. No regex parsing needed.</li>
+    <li><strong>Interrupt/resume</strong> — LangGraph's human-in-the-loop can pause the graph for clarifying questions ("Which airport? What dates?") and resume after the user answers.</li>
+    <li><strong>Subgraph composition</strong> — The planning agent's internal graph could be nested as a subgraph of root, sharing state properly instead of the current manual state threading.</li>
+  </ul>
+</section>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="requirements">
+  <h2><span class="num">03</span> UI Requirements → API Mapping</h2>
+  <p class="section-desc">Each UI requirement from the makeover spec mapped to the API capability that enables it.</p>
+
+  <div class="req-grid">
+    <div class="req-item">
+      <h4>1. Stream progress and results (P0)</h4>
+      <p>Replace keepalive-space hack with real SSE events: agent status, section delivery, token streaming, final payload.</p>
+      <div class="tags">
+        <span class="tag tag--lg">astream() / astream_events(v2)</span>
+        <span class="tag tag--lg">FastAPI StreamingResponse + SSE</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>2. Structured itinerary with day-by-day plan (P0)</h4>
+      <p>GPT-4o returns typed JSON via <code>response_format</code> with destination geocode, days array, item slots, and entity references.</p>
+      <div class="tags">
+        <span class="tag tag--lg">GPT-4o structured output</span>
+        <span class="tag tag--gp">Place Details for place_id + coords</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>3. One schema per entity with source + freshness (P0)</h4>
+      <p>Normalize flight, hotel, place, weather into typed schemas with <code>id</code>, <code>source</code>, <code>fetched_at</code>, structured price objects.</p>
+      <div class="tags">
+        <span class="tag tag--rs">RouteStack price breakdown</span>
+        <span class="tag tag--gp">Places field mask expansion</span>
+        <span class="tag tag--ow">OpenWeather source + is_simulated</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>4. Per-section status for partial results (P0)</h4>
+      <p>Each agent node emits its status via <code>astream()</code>. The SSE layer translates node state to section status events.</p>
+      <div class="tags">
+        <span class="tag tag--lg">astream() node events</span>
+        <span class="tag tag--lg">LangGraph state channels per section</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>5. Honest weather with daily forecast (P0)</h4>
+      <p>Set <code>OPENWEATHER_API_KEY</code> on Heroku. Parse <code>daily[]</code> from One Call 3.0. Use day_summary for trip-date forecasts beyond 8 days.</p>
+      <div class="tags">
+        <span class="tag tag--ow">One Call 3.0 daily[] (already returned)</span>
+        <span class="tag tag--ow">day_summary endpoint (1.5yr ahead)</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>6. Consistent error contract (P0)</h4>
+      <p>Typed error schema with <code>code</code>, <code>retryable</code>, <code>section</code>, <code>request_id</code>. Mid-stream errors as SSE error events, not truncated 200s.</p>
+      <div class="tags">
+        <span class="tag tag--lg">SSE error event type</span>
+        <span class="tag tag--lg">request_id on all responses</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>7. Auth + photo proxy + attribution (P0)</h4>
+      <p>Extract user from bearer token (Auth0). Proxy Google Places photos server-side. Return <code>width</code>, <code>height</code>, <code>attribution</code>.</p>
+      <div class="tags">
+        <span class="tag tag--gp">Photo proxy endpoint</span>
+        <span class="tag tag--gp">authorAttributions from field mask</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>8–9. Conversations API + Cancel (P1)</h4>
+      <p>Server-side conversation storage with pagination. Cancel via <code>task.cancel()</code> on the running asyncio task.</p>
+      <div class="tags">
+        <span class="tag tag--lg">DB-backed conversation model</span>
+        <span class="tag tag--lg">asyncio.Task cancellation</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>10–12. Clarifying questions, scope guard, suggestions (P1)</h4>
+      <p>LangGraph's interrupt/resume for clarifying questions. Structured output for scope classification. Follow-up suggestions in the final payload.</p>
+      <div class="tags">
+        <span class="tag tag--lg">LangGraph interrupt/resume</span>
+        <span class="tag tag--lg">GPT-4o structured output for classification</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>13–15. Rich flights, hotels, places (P1)</h4>
+      <p>Consume full RouteStack response (segments, layovers, baggage, booking URLs). Expand Places field mask. Call Place Details.</p>
+      <div class="tags">
+        <span class="tag tag--rs">Full flight/hotel response parsing</span>
+        <span class="tag tag--gp">Place Details + expanded field mask</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>16. Destination geocode + map bounds (P1)</h4>
+      <p>Use Google Places Text Search for the destination city → <code>location</code> + <code>viewport</code> in the first SSE event.</p>
+      <div class="tags">
+        <span class="tag tag--gp">Text Search viewport field</span>
+      </div>
+    </div>
+
+    <div class="req-item">
+      <h4>17+. Feedback, preferences, sharing, export (P2)</h4>
+      <p>New server endpoints, user profile storage, .ics generation, PDF export. Currency/locale/units from profile.</p>
+      <div class="tags">
+        <span class="tag tag--lg">New DB models</span>
+        <span class="tag tag--rs">Currency param in hotel search</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="new-endpoints">
+  <h2><span class="num">04</span> New Server Endpoints Needed</h2>
+  <p class="section-desc">Complete list of endpoints to add, organized by priority.</p>
+
+  <h3>P0 — Core Experience</h3>
+  <div class="endpoint-list">
+    <div class="endpoint"><span class="method method--sse">SSE</span> <span class="path">POST /api/llm/ask</span> <span class="desc">— streaming version with agent/section/delta/final/error events</span></div>
+    <div class="endpoint"><span class="method method--get">GET</span> <span class="path">/api/places/photo/{ref}</span> <span class="desc">— proxied photo with width, height, attribution</span></div>
+  </div>
+
+  <h3>P1 — Polish</h3>
+  <div class="endpoint-list">
+    <div class="endpoint"><span class="method method--get">GET</span> <span class="path">/api/conversations</span> <span class="desc">— paginated list with server-generated titles</span></div>
+    <div class="endpoint"><span class="method method--get">GET</span> <span class="path">/api/conversations/{id}</span> <span class="desc">— full conversation with structured data</span></div>
+    <div class="endpoint"><span class="method method--post">POST</span> <span class="path">/api/conversations</span> <span class="desc">— create new conversation</span></div>
+    <div class="endpoint"><span class="method method--del">DEL</span> <span class="path">/api/conversations/{id}</span> <span class="desc">— delete conversation</span></div>
+    <div class="endpoint"><span class="method method--del">DEL</span> <span class="path">/api/llm/ask/{request_id}</span> <span class="desc">— cancel in-flight request</span></div>
+    <div class="endpoint"><span class="method method--post">POST</span> <span class="path">/api/feedback</span> <span class="desc">— message rating with reason</span></div>
+    <div class="endpoint"><span class="method method--get">GET</span> <span class="path">/api/places/{place_id}</span> <span class="desc">— enriched place details (hours, reviews, editorial)</span></div>
+    <div class="endpoint"><span class="method method--get">GET</span> <span class="path">/api/weather/forecast</span> <span class="desc">— daily forecast for destination + date range</span></div>
+  </div>
+
+  <h3>P2 — Scale &amp; Delight</h3>
+  <div class="endpoint-list">
+    <div class="endpoint"><span class="method method--get">GET</span> <span class="path">/api/users/preferences</span> <span class="desc">— locale, currency, home airport, traveler defaults</span></div>
+    <div class="endpoint"><span class="method method--post">PATCH</span> <span class="path">/api/users/preferences</span> <span class="desc">— update preferences</span></div>
+    <div class="endpoint"><span class="method method--post">POST</span> <span class="path">/api/saved-places</span> <span class="desc">— bookmark a place</span></div>
+    <div class="endpoint"><span class="method method--get">GET</span> <span class="path">/api/saved-places</span> <span class="desc">— list bookmarks</span></div>
+    <div class="endpoint"><span class="method method--get">GET</span> <span class="path">/api/trips/{id}/export</span> <span class="desc">— .ics, PDF, or share link</span></div>
+    <div class="endpoint"><span class="method method--get">GET</span> <span class="path">/api/trips/{id}/share</span> <span class="desc">— read-only share link</span></div>
+  </div>
+</section>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="roadmap">
+  <h2><span class="num">05</span> Phased Upgrade Roadmap</h2>
+  <p class="section-desc">Suggested implementation order based on impact and dependency chains.</p>
+
+  <div class="phase-card">
+    <p class="phase-label phase-label--p0">Phase 1 — Foundation (1–2 weeks)</p>
+    <h4>Streaming + Entity Schemas + Weather Fix</h4>
+    <ul>
+      <li><strong>Set OPENWEATHER_API_KEY on Heroku</strong> — Instant win. The code already calls the API; it just falls back to simulated data because the key is missing.</li>
+      <li><strong>Parse <code>daily[]</code> from One Call 3.0</strong> — The data is already coming back in every response. Add a function that extracts <code>daily[].temp.min/max</code>, <code>weather[].id</code>, <code>pop</code>, <code>uvi</code> and returns a typed forecast array.</li>
+      <li><strong>Define entity schemas</strong> — Pydantic models for <code>Flight</code>, <code>Hotel</code>, <code>Place</code>, <code>WeatherDay</code>, <code>Price</code> with <code>id</code>, <code>source</code>, <code>fetched_at</code>, <code>is_estimate</code>. Normalize all tool outputs through these.</li>
+      <li><strong>Switch <code>ainvoke()</code> → <code>astream()</code></strong> in rootAgent — Emit state after each node. The SSE endpoint wraps this as <code>event: agent</code> and <code>event: section</code> messages.</li>
+      <li><strong>New <code>POST /api/llm/ask</code></strong> — SSE endpoint using <code>astream()</code>. Keep the old endpoint for compatibility.</li>
+      <li><strong>Error contract</strong> — Typed error schema. SSE error events mid-stream. <code>request_id</code> on every response.</li>
+    </ul>
+  </div>
+
+  <div class="phase-card">
+    <p class="phase-label phase-label--p0">Phase 2 — Structured Output + Photo Proxy (1 week)</p>
+    <h4>GPT-4o JSON Mode + Google Places Hardening</h4>
+    <ul>
+      <li><strong>Structured itinerary output</strong> — Add <code>response_format: { type: "json_schema" }</code> to the planning agent's final LLM call. Define the itinerary JSON schema (trip metadata, days array, item slots with entity refs).</li>
+      <li><strong>Photo proxy endpoint</strong> — <code>GET /api/places/photo/{ref}?w=640</code> fetches from Google server-side, caches, returns with <code>width</code>, <code>height</code>, <code>attribution</code>. Stops exposing the API key.</li>
+      <li><strong>Expand Places field mask</strong> — Add <code>regularOpeningHours</code>, <code>priceLevel</code>, <code>editorialSummary</code>, <code>websiteUri</code>, <code>googleMapsUri</code>, <code>reviews</code>, <code>internationalPhoneNumber</code>, <code>photos.authorAttributions</code>.</li>
+      <li><strong>Extract user from bearer token</strong> — Stop accepting <code>user_email</code> in the request body. Read it from the Auth0 token claims.</li>
+    </ul>
+  </div>
+
+  <div class="phase-card">
+    <p class="phase-label phase-label--p1">Phase 3 — Rich Data + Conversations (1–2 weeks)</p>
+    <h4>Full RouteStack Parsing + Server-Side History</h4>
+    <ul>
+      <li><strong>Full flight response parsing</strong> — Extract segments with layover times, baggage info, UTC offsets, cabin class, per-traveler + total price, and booking URLs from <code>fareSourceCode</code>.</li>
+      <li><strong>Full hotel response parsing</strong> — Extract nightly + total price, check-in/out, star rating vs guest rating, review count, amenities codes, multiple photos, cancellation policy, coordinates, and booking URLs from <code>correlationId</code> + <code>token</code>.</li>
+      <li><strong>Place Details calls</strong> — After Text Search, call <code>GET places/{id}</code> for the top results to get opening hours, reviews, editorial summary.</li>
+      <li><strong>Conversation CRUD endpoints</strong> — Server-side storage, pagination, server-generated titles, message IDs, stored structured data.</li>
+      <li><strong>Cancel endpoint</strong> — <code>DELETE /api/llm/ask/{request_id}</code> cancels the running asyncio task.</li>
+      <li><strong>Parallel agent execution</strong> — Fan out flights + hotels + restaurants + weather as parallel LangGraph nodes. Cuts total latency to ~longest-single-call.</li>
+    </ul>
+  </div>
+
+  <div class="phase-card">
+    <p class="phase-label phase-label--p1">Phase 4 — Intelligence (1 week)</p>
+    <h4>Clarifying Questions + Scope Guard + Suggestions</h4>
+    <ul>
+      <li><strong>LangGraph interrupt/resume</strong> — When the agent detects missing info (no origin, no dates), interrupt with a clarifying question event. Resume on user response.</li>
+      <li><strong>Scope classification</strong> — Structured output to detect out-of-scope queries early. Return <code>status: "out_of_scope"</code> with helpful redirects instead of refusals.</li>
+      <li><strong>Follow-up suggestions</strong> — Add <code>suggestions[]</code> to every response: "Add a Sintra day trip", "Cheaper hotels", "Show weather for those dates".</li>
+      <li><strong>Token-level streaming</strong> — Upgrade from <code>astream()</code> to <code>astream_events(v2)</code> for the narrative answer portion. The itinerary text types in word by word.</li>
+      <li><strong>Destination geocode + map bounds</strong> — Return <code>viewport</code> from the destination's Places result as the first SSE event, so the map centers before results arrive.</li>
+    </ul>
+  </div>
+
+  <div class="phase-card">
+    <p class="phase-label phase-label--p2">Phase 5 — Scale &amp; Delight (2+ weeks)</p>
+    <h4>Preferences, Sharing, Bookmarks, New Inventory</h4>
+    <ul>
+      <li><strong>User preferences</strong> — Locale, currency, units, home airport, traveler defaults. Pass to RouteStack, OpenWeather, and display logic.</li>
+      <li><strong>Feedback endpoint</strong> — <code>POST /api/feedback</code> with message_id, rating, reason.</li>
+      <li><strong>Saved places / bookmarks</strong> — Powers the "Saved" nav item (currently "Soon").</li>
+      <li><strong>Export</strong> — .ics calendar export from the structured itinerary. PDF via server-side rendering.</li>
+      <li><strong>Read-only share links</strong> — Generate a public link for a completed itinerary.</li>
+      <li><strong>Car rental integration</strong> — Wire up RouteStack <code>/mcp/car/*</code> endpoints.</li>
+      <li><strong>Activities integration</strong> — When RouteStack rolls out activities in Q4, integrate as an alternative to Google Places for experience-type recommendations.</li>
+      <li><strong>Performance targets</strong> — gzip/brotli compression, popular destination cache, first SSE event &lt;1s, first section &lt;8s, p95 total &lt;30s.</li>
+      <li><strong>OpenAPI spec</strong> — Auto-generate from FastAPI with <code>schema_version</code> field. Fixture responses for every state.</li>
+    </ul>
+  </div>
+</section>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="sources">
+  <h2><span class="num">06</span> Sources</h2>
+  <p class="section-desc">External references used in this audit.</p>
+  <ul>
+    <li><a href="https://routestack.ai/" target="_blank" rel="noopener">RouteStack.ai</a> — Travel MCP server for flights, hotels, cars, activities, vacation rentals</li>
+    <li><a href="https://www.openpr.com/news/4654241" target="_blank" rel="noopener">RouteStack Activities &amp; Vacation Rentals announcement</a> (Oct 2026)</li>
+    <li><a href="https://www.abnewswire.com/pressreleases/routestackai-by-custom-travel-solutions-expands-to-deliver-native-stripe-acp-integration_843349.html" target="_blank" rel="noopener">RouteStack Stripe ACP announcement</a> (Oct 2026)</li>
+    <li><a href="https://developers.google.com/maps/documentation/places/web-service/release-notes" target="_blank" rel="noopener">Google Places API (New) release notes</a></li>
+    <li><a href="https://developers.google.com/maps/documentation/places/web-service/choose-fields" target="_blank" rel="noopener">Google Places field masks and pricing</a></li>
+    <li><a href="https://developers.google.com/maps/documentation/places/web-service/policies" target="_blank" rel="noopener">Google Places attribution requirements</a></li>
+    <li><a href="https://docs.openweather.co.uk/api/one-call-3" target="_blank" rel="noopener">OpenWeather One Call API 3.0</a> — current, daily, hourly, historical, daily aggregation</li>
+    <li><a href="https://dev.to/kasi_viswanath/streaming-ai-agent-with-fastapi-langgraph-2025-26-guide-1nkn" target="_blank" rel="noopener">Streaming AI Agent with FastAPI &amp; LangGraph</a></li>
+    <li><a href="https://www.mintlify.com/langchain-ai/langgraph/concepts/streaming" target="_blank" rel="noopener">LangGraph streaming concepts</a></li>
+  </ul>
+</section>
+
+</div>
