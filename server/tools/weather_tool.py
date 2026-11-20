@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import re
 import requests
 import logging
@@ -19,6 +20,10 @@ load_dotenv()
 
 MAX_TRIP_DAYS = 14
 _GEOCODE_CACHE: Dict[str, tuple] = {}
+# Set when One Call 3.0 rejects the key (no "One Call by Call" subscription),
+# so we go straight to the free 2.5 forecast for a while instead of retrying.
+_ONECALL_DENIED_UNTIL: float = 0.0
+_ONECALL_RETRY_SECONDS = 3600
 
 
 def _date_range(start: Optional[str], end: Optional[str]) -> List[str]:
@@ -169,13 +174,21 @@ class WeatherTool:
         fetched_at = now_iso()
         if not os.getenv("OPENWEATHER_API_KEY"):
             return self._simulated_forecast(location, units, "provider_not_configured")
+        global _ONECALL_DENIED_UNTIL
         try:
             lat, lon = self._get_coordinates(location)
+            if time.monotonic() < _ONECALL_DENIED_UNTIL:
+                return self._free_forecast(lat, lon, location, start_date, end_date, units, fetched_at)
             resp = requests.get(
                 "https://api.openweathermap.org/data/3.0/onecall",
                 params={"lat": lat, "lon": lon, "appid": os.getenv("OPENWEATHER_API_KEY"), "units": units, "exclude": "minutely,hourly"},
                 timeout=10,
             )
+            if resp.status_code in (401, 403):
+                # Valid key without a One Call 3.0 subscription: use the free plan.
+                logger.info(f"One Call 3.0 returned {resp.status_code}; using the free 5-day forecast")
+                _ONECALL_DENIED_UNTIL = time.monotonic() + _ONECALL_RETRY_SECONDS
+                return self._free_forecast(lat, lon, location, start_date, end_date, units, fetched_at)
             if resp.status_code != 200:
                 logger.warning(f"One Call API 3.0 returned {resp.status_code} for {location}")
                 return self._simulated_forecast(location, units, "provider_unavailable")
@@ -246,6 +259,139 @@ class WeatherTool:
             days=days,
             alerts=alerts,
             report=report,
+        )
+
+    # ------------------------------------------------- free plan (2.5) fallback
+    @staticmethod
+    def _aggregate_3h(items: List[Dict[str, Any]], offset: int, location: str, units: str, fetched_at: str) -> List[WeatherDay]:
+        """Fold the 5-day / 3-hour forecast into one WeatherDay per local date."""
+        by_date: Dict[str, List[tuple]] = {}
+        for it in items:
+            if it.get("dt") is None:
+                continue
+            local = datetime.fromtimestamp(it["dt"] + offset, tz=timezone.utc)
+            by_date.setdefault(local.date().isoformat(), []).append((local.hour, it))
+        days: List[WeatherDay] = []
+        for date, slots in sorted(by_date.items()):
+            mains = [it.get("main") or {} for _, it in slots]
+            lows = [m["temp_min"] for m in mains if m.get("temp_min") is not None]
+            highs = [m["temp_max"] for m in mains if m.get("temp_max") is not None]
+            pops = [it["pop"] for _, it in slots if it.get("pop") is not None]
+            hums = [m["humidity"] for m in mains if m.get("humidity") is not None]
+            winds = [(it.get("wind") or {}).get("speed") for _, it in slots]
+            winds = [w for w in winds if w is not None]
+            precip = sum(((it.get("rain") or {}).get("3h") or 0) + ((it.get("snow") or {}).get("3h") or 0) for _, it in slots)
+            # Condition: the slot nearest early afternoon, unless the day is likely wet,
+            # in which case the wettest slot (so a rainy day doesn't show a sun).
+            _, midday = min(slots, key=lambda hs: abs(hs[0] - 13))
+            pick = midday
+            if pops and max(pops) >= 0.5:
+                _, wettest = max(slots, key=lambda hs: hs[1].get("pop") or 0)
+                if ((wettest.get("weather") or [{}])[0].get("id") or 800) < 700:
+                    pick = wettest
+            cond = (pick.get("weather") or [{}])[0]
+            icon = cond.get("icon")
+            days.append(WeatherDay(
+                id=make_id("wx", location, date),
+                source="openweather",
+                fetched_at=fetched_at,
+                date=date,
+                temp_min=min(lows) if lows else None,
+                temp_max=max(highs) if highs else None,
+                units=units,
+                condition_id=cond.get("id"),
+                condition=cond.get("description"),
+                icon=icon.replace("n", "d") if icon else None,
+                pop=max(pops) if pops else None,
+                precipitation_mm=round(precip, 1) or None,
+                humidity=round(sum(hums) / len(hums)) if hums else None,
+                wind_speed=max(winds) if winds else None,
+                kind="forecast",
+            ))
+        return days
+
+    def _free_forecast(self, lat: float, lon: float, location: str, start_date: Optional[str], end_date: Optional[str], units: str, fetched_at: str) -> WeatherForecast:
+        """Free-plan forecast: current conditions plus 5 days of 3-hour slots.
+
+        Only real numbers: trip days past the 5-day window are left out, and a
+        trip entirely past it gets the honest "no forecast yet" response.
+        """
+        key = os.getenv("OPENWEATHER_API_KEY")
+        try:
+            resp = requests.get(
+                "https://api.openweathermap.org/data/2.5/forecast",
+                params={"lat": lat, "lon": lon, "appid": key, "units": units},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                logger.warning(f"2.5 forecast returned {resp.status_code} for {location}")
+                return self._simulated_forecast(location, units, "provider_unavailable")
+            fc = resp.json()
+        except Exception as e:
+            logger.error(f"2.5 forecast failed for {location}: {e}")
+            return self._simulated_forecast(location, units, "provider_unavailable")
+
+        current: Dict[str, Any] = {}
+        try:
+            cur = requests.get(
+                "https://api.openweathermap.org/data/2.5/weather",
+                params={"lat": lat, "lon": lon, "appid": key, "units": units},
+                timeout=10,
+            )
+            if cur.status_code == 200:
+                c = cur.json()
+                cw = (c.get("weather") or [{}])[0]
+                current = {
+                    "temp": (c.get("main") or {}).get("temp"),
+                    "feels_like": (c.get("main") or {}).get("feels_like"),
+                    "condition_id": cw.get("id"),
+                    "condition": cw.get("description"),
+                    "icon": cw.get("icon"),
+                    "humidity": (c.get("main") or {}).get("humidity"),
+                    "wind_speed": (c.get("wind") or {}).get("speed"),
+                }
+        except Exception as e:
+            logger.warning(f"2.5 current weather failed for {location}: {e}")
+
+        offset = int((fc.get("city") or {}).get("timezone") or 0)
+        days = self._aggregate_3h(fc.get("list") or [], offset, location, units, fetched_at)
+        wanted = _date_range(start_date, end_date)
+        if wanted:
+            days = [d for d in days if d.date in set(wanted)]
+            if not days:
+                logger.info(f"Trip dates for {location} are past the 5-day forecast window")
+                out = self._simulated_forecast(location, units, "beyond_forecast_window")
+                out.report = f"The trip dates are more than 5 days away, so there's no forecast for {location} yet."
+                return out
+
+        deg = "°C" if units == "metric" else "°F"
+        report = (
+            f"In {location}, it's currently {current.get('temp', 'N/A')}{deg} with {current.get('condition', 'unknown conditions')}."
+            if current else f"Forecast for {location}."
+        )
+        if days:
+            report += " Forecast: " + "; ".join(
+                f"{d.date} {d.condition or ''} {round(d.temp_min) if d.temp_min is not None else '?'}–"
+                f"{round(d.temp_max) if d.temp_max is not None else '?'}{deg}"
+                + (f", {round((d.pop or 0) * 100)}% chance of rain" if d.pop is not None else "")
+                for d in days
+            )
+            if wanted and len(days) < len(wanted):
+                report += f" (Forecast covers {len(days)} of {len(wanted)} trip days; later days are beyond the 5-day window.)"
+        return WeatherForecast(
+            id=make_id("wxf", location, start_date, end_date),
+            source="openweather",
+            fetched_at=fetched_at,
+            location=location,
+            lat=lat,
+            lng=lon,
+            units=units,
+            is_simulated=False,
+            current=current or None,
+            days=days,
+            report=report,
+            plan="free_5day",
+            trip_days=len(wanted) or None,
         )
 
     def _simulated_forecast(self, location: str, units: str, reason: str) -> WeatherForecast:

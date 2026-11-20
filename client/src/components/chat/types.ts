@@ -169,6 +169,10 @@ export type WeatherForecast = Entity & {
   units?: "metric" | "imperial"
   is_simulated?: boolean
   reason?: string
+  /** "free_5day" when built from OpenWeather's free 5-day forecast. */
+  plan?: string
+  /** Trip length in days, to say when the forecast covers only part of it. */
+  trip_days?: number
   timezone?: string
   days?: WeatherDay[]
   alerts?: { event: string; sender?: string; start?: string; end?: string; description?: string }[]

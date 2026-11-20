@@ -73,7 +73,11 @@ export function WeatherNote({ data, answer }: { data?: ResponseData; answer: str
         tone="estimate"
         className="mt-6 max-w-prose"
         title={<span className="inline-flex items-center gap-2">Weather <Badge variant="estimate">Estimate</Badge></span>}
-        description={`Live weather wasn't available${fc?.location ? ` for ${fc.location}` : ""}, so there's no forecast here. Check a weather service before you pack.`}
+        description={
+          fc?.reason === "beyond_forecast_window"
+            ? `Forecasts only reach about 5 days ahead, so there's none for ${fc.location || "this trip"} yet. Ask again closer to your trip.`
+            : `Live weather wasn't available${fc?.location ? ` for ${fc.location}` : ""}, so there's no forecast here. Check a weather service before you pack.`
+        }
       />
     )
   }
@@ -89,7 +93,11 @@ export function WeatherNote({ data, answer }: { data?: ResponseData; answer: str
           Weather
           <span className="text-sm font-normal text-muted-foreground">{fc.location}</span>
         </h4>
-        <span className="text-meta text-muted-foreground">Forecast from OpenWeather</span>
+        <span className="text-meta text-muted-foreground">
+          {fc.trip_days && days.length < fc.trip_days
+            ? `Covers ${days.length} of ${fc.trip_days} trip days · later days are past the 5-day forecast`
+            : "Forecast from OpenWeather"}
+        </span>
       </div>
       <ul className="scroll-thin flex gap-2 overflow-x-auto pb-1">
         {days.map((d) => <DayCell key={d.date} d={d} unit={unit} />)}
