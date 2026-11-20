@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Map as MapIcon, Plus } from 'lucide-react';
+import { CalendarPlus, Map as MapIcon, Plus } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 import { LocationProvider, useLocation as useMapLocations, type Location } from '@/components/LocationContext';
@@ -10,6 +10,22 @@ import { useChat } from '@/hooks/useChat';
 import { cn } from '@/lib/utils';
 import { displayLocale } from '@/lib/format';
 import { destinationOf, type ChatMessage } from '@/components/chat/types';
+import { TripActions, downloadItineraryIcs } from '@/components/chat/itinerary';
+import { Button } from '@/components/ui/button';
+
+/** Calendar / PDF / Share for the latest day-by-day plan, always in reach. */
+function HeaderTripActions({ messages, conversationId }: { messages: ChatMessage[]; conversationId: string }) {
+  const latest = [...messages].reverse().find((m) => m.role === 'assistant' && !m.status && m.data?.itinerary?.days?.length);
+  if (!latest?.data) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1" role="group" aria-label="Trip actions">
+      <Button size="sm" variant="ghost" onClick={() => downloadItineraryIcs(latest.data!)} aria-label="Add to calendar" title="Add the plan to your calendar (.ics)">
+        <CalendarPlus aria-hidden="true" />
+      </Button>
+      <TripActions compact tripId={latest.serverId ? conversationId : undefined} />
+    </span>
+  );
+}
 
 /** "20–25 Dec", "28 Dec – 2 Jan" from ISO dates. */
 function dateRange(start?: string, end?: string) {
@@ -51,7 +67,7 @@ function ChatArea({ id, mapToggle, openMap }: { id: string; mapToggle: React.Rea
   const navigate = useNavigate();
   const routerLocation = useLocation();
   const chat = useChat(id);
-  const { detectedLocations, clearDetectedLocations, addDetectedLocations, setSelectedLocation } = useMapLocations();
+  const { clearDetectedLocations, addDetectedLocations, setSelectedLocation } = useMapLocations();
 
   // "Day 2 on map": show just that day's stops.
   const showOnMap = useCallback((pins: Location[]) => {
@@ -85,7 +101,7 @@ function ChatArea({ id, mapToggle, openMap }: { id: string; mapToggle: React.Rea
           <button
             type="button"
             onClick={startNewTrip}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:h-11"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:h-11"
           >
             <Plus className="size-4" aria-hidden="true" />
             New trip
@@ -94,11 +110,11 @@ function ChatArea({ id, mapToggle, openMap }: { id: string; mapToggle: React.Rea
           <span className="px-2 text-sm text-muted-foreground">New trip</span>
         )}
         <TripBar messages={chat.messages} />
+        <span className="ml-auto flex items-center gap-1">
+          <HeaderTripActions messages={chat.messages} conversationId={id} />
+        </span>
         {mapToggle && (
           <span className="flex items-center gap-1">
-            {detectedLocations.length > 0 && (
-              <span className="text-meta text-muted-foreground xl:hidden tabular">{detectedLocations.length} on map</span>
-            )}
             {mapToggle}
           </span>
         )}
@@ -139,10 +155,10 @@ export default function ChatMainPage() {
       onClick={() => setMapOpen((v) => !v)}
       aria-expanded={mapOpen}
       aria-controls="trip-map"
-      className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground xl:hidden pointer-coarse:h-11"
+      className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground xl:hidden pointer-coarse:h-11"
     >
       <MapIcon className="size-4" aria-hidden="true" />
-      {mapOpen ? 'Hide map' : 'Show map'}
+      <span className="sr-only sm:not-sr-only">{mapOpen ? 'Hide map' : 'Show map'}</span>
     </button>
   );
 

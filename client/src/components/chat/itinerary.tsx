@@ -1,6 +1,6 @@
 import { useId, useState } from "react"
 import { displayLocale } from "@/lib/format"
-import { BedDouble, CalendarDays, CalendarPlus, Car, Coffee, FileDown, Footprints, Landmark, Link2, Loader2, MapPin, Plane, StickyNote, Utensils, type LucideIcon } from "lucide-react"
+import { BedDouble, CalendarDays, CalendarPlus, Car, Coffee, FileDown, Footprints, Landmark, Link2, Loader2, MapPin, Plane, Share2, StickyNote, Utensils, type LucideIcon } from "lucide-react"
 import { toast } from "sonner"
 import { downloadTripFile, shareTrip } from "@/api/AccountApi"
 import { useApiToken } from "@/api/ConversationsApi"
@@ -53,11 +53,33 @@ function pinsFor(items: ItineraryItem[], index: ReturnType<typeof entityIndex>):
   return pins
 }
 
-/** PDF download and read-only share link (server; needs the trip saved to the account). */
-function TripActions({ tripId }: { tripId: string }) {
+/** Download the plan as an .ics calendar file (works offline, no account needed). */
+export function downloadItineraryIcs(data: ResponseData) {
+  const it = data.itinerary
+  if (!it?.days?.length) return
+  const index = entityIndex(data)
+  const ics = itineraryToIcs(it, {
+    describe: (item) => {
+      const e = item.ref ? (index.get(item.ref)?.entity as Place | undefined) : undefined
+      return e && "address" in e ? e.address : undefined
+    },
+  })
+  const name = (it.trip.destination?.name ?? "trip").split(",")[0].trim().toLowerCase().replace(/\s+/g, "-")
+  downloadFile(`travelbuddy-${name}-${it.trip.start_date}.ics`, ics, "text/calendar;charset=utf-8")
+}
+
+const SIGN_IN_HINT = { description: "Sign in and ask again — PDFs and share links come from trips saved to your account." }
+
+/**
+ * PDF download and read-only share link (server; needs the trip saved to the
+ * account). Without a saved trip the buttons stay visible and explain why.
+ * `compact` = icon buttons for the chat header (labels from sm up).
+ */
+export function TripActions({ tripId, compact = false }: { tripId?: string; compact?: boolean }) {
   const getToken = useApiToken()
   const [busy, setBusy] = useState<"pdf" | "share" | null>(null)
   const pdf = async () => {
+    if (!tripId) return void toast.info("Save this trip to download a PDF", SIGN_IN_HINT)
     setBusy("pdf")
     try {
       await downloadTripFile(tripId, "pdf", await getToken())
@@ -68,6 +90,7 @@ function TripActions({ tripId }: { tripId: string }) {
     }
   }
   const share = async () => {
+    if (!tripId) return void toast.info("Save this trip to share it", SIGN_IN_HINT)
     setBusy("share")
     try {
       const { url } = await shareTrip(tripId, await getToken())
@@ -83,15 +106,18 @@ function TripActions({ tripId }: { tripId: string }) {
       setBusy(null)
     }
   }
+  const variant = compact ? "ghost" : "outline"
+  const label = compact ? "hidden sm:inline" : undefined
+  // Compact (chat header): PDF is icon-only; Share keeps its label from sm up.
   return (
     <>
-      <Button size="sm" variant="outline" onClick={pdf} disabled={busy !== null}>
+      <Button size="sm" variant={variant} onClick={pdf} disabled={busy !== null} aria-label={compact ? "Download PDF" : undefined} title="Download the plan as a PDF">
         {busy === "pdf" ? <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> : <FileDown aria-hidden="true" />}
-        PDF
+        {!compact && "PDF"}
       </Button>
-      <Button size="sm" variant="outline" onClick={share} disabled={busy !== null}>
-        {busy === "share" ? <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
-        Share
+      <Button size="sm" variant={compact ? "default" : "outline"} className={compact ? "rounded-full" : undefined} onClick={share} disabled={busy !== null} aria-label={compact ? "Copy share link" : undefined} title="Copy a read-only link to this plan">
+        {busy === "share" ? <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> : compact ? <Share2 aria-hidden="true" /> : <Link2 aria-hidden="true" />}
+        <span className={label}>Share</span>
       </Button>
     </>
   )
@@ -103,16 +129,7 @@ export function ItineraryView({ data, onShowOnMap, tripId }: { data?: ResponseDa
   if (!it?.days?.length) return null
   const index = entityIndex(data)
 
-  const exportIcs = () => {
-    const ics = itineraryToIcs(it, {
-      describe: (item) => {
-        const e = item.ref ? (index.get(item.ref)?.entity as Place | undefined) : undefined
-        return e && "address" in e ? e.address : undefined
-      },
-    })
-    const name = (it.trip.destination?.name ?? "trip").split(",")[0].trim().toLowerCase().replace(/\s+/g, "-")
-    downloadFile(`travelbuddy-${name}-${it.trip.start_date}.ics`, ics, "text/calendar;charset=utf-8")
-  }
+  const exportIcs = () => downloadItineraryIcs(data!)
 
   return (
     <section aria-labelledby={headingId} className="mt-8 max-w-3xl">
@@ -127,7 +144,7 @@ export function ItineraryView({ data, onShowOnMap, tripId }: { data?: ResponseDa
             <CalendarPlus aria-hidden="true" />
             Add to calendar
           </Button>
-          {tripId && <TripActions tripId={tripId} />}
+          <TripActions tripId={tripId} />
         </div>
       </div>
       {it.summary && <p className="mb-4 text-sm text-muted-foreground">{it.summary}</p>}

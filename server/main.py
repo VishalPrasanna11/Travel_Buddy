@@ -36,10 +36,14 @@ load_dotenv()
 async def lifespan(app):
     logger.info("Starting up the application...")
     try:
-        # Create new app tables (conversations, feedback, …) if they don't exist yet.
+        # Create any missing tables: app data (conversations, feedback, …) plus the
+        # older users and chat-history tables, which nothing else creates.
         from middlewares.conn_database import engine
         from models.appModels import AppBase
-        AppBase.metadata.create_all(bind=engine)
+        from models.userModel import Base as UserBase
+        from models.llm_chat_historyModel import Base as ChatHistoryBase
+        for base in (AppBase, UserBase, ChatHistoryBase):
+            base.metadata.create_all(bind=engine)
         logger.info("App tables ready")
     except Exception as e:
         logger.warning(f"Could not create app tables (DB unavailable?): {e}")
