@@ -43,7 +43,7 @@ Every turn gets layer 1. Layer 2 runs unless `--fixtures`. Layer 3 runs with `--
 | `stream.terminal` | The stream ends with `final` or `clarification` |
 | `schema.final` / `schema.clarification` | Final has `answer` (string), `sections` (object), valid `status`; clarification has `question`, `fields`, `missing` |
 | `answer.non_empty` | The final answer isn't blank |
-| `grounding.prices` | Every money amount in the answer (`$612`, `US$1,225`, `€95`, `300 EUR`) matches a price in the structured results within 1% (or a simple split of one: per night / per person, ÷2–14), or was in the user's own message |
+| `grounding.prices` | Every money amount in the answer (`$612`, `US$1,225`, `€95`, `300 EUR`) matches a price in the structured results within 1% (or a simple split of one: per night / per person, ÷2–14, or a discount: published − deal price), or was in the user's own message |
 | `grounding.itinerary_refs` | Every itinerary item `ref` points at a real flight/hotel/place/restaurant in the response |
 | `grounding.itinerary_dates` | Every itinerary day falls inside the trip's start–end dates |
 | `grounding.weather_honest` | When the weather is flagged `is_simulated`, the answer states no °C/°F temperatures |

@@ -205,6 +205,11 @@ MONEY_RE = re.compile(
 def data_prices(obj: Any, out: Optional[List[float]] = None) -> List[float]:
     out = [] if out is None else out
     if isinstance(obj, dict):
+        # A discount ("save $500") is published minus the deal price.
+        if isinstance(obj.get("published"), (int, float)):
+            for k in ("total", "amount"):
+                if isinstance(obj.get(k), (int, float)):
+                    out.append(round(float(obj["published"]) - float(obj[k]), 2))
         for k, v in obj.items():
             if k in PRICE_KEYS and isinstance(v, (int, float)):
                 out.append(float(v))
