@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import MapComponent from "./MapComponent";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { MapPin, Map } from 'lucide-react';
@@ -17,58 +17,44 @@ export function TravelMapComponent() {
     lat: number;
     lng: number;
     title?: string;
+    address?: string;
     type?: 'primary' | 'secondary' | 'reference';
   }>>([]);
-  
-  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | undefined>(undefined);
-  const [mapZoom, setMapZoom] = useState(2); // Default to world view
-  
-  // Update markers when detected locations change
+
+  // Only a picked place drives the camera; framing all pins is done by
+  // MapComponent's fitBounds whenever the pin set changes.
+  const [focus, setFocus] = useState<{ lat: number; lng: number } | undefined>(undefined);
+
   useEffect(() => {
-    if (!detectedLocations.length) {
-      setMarkers([]);
-      setMapCenter(undefined);
-      setMapZoom(2);
-      return;
-    }
-    
-    // Filter valid locations (non-null lat/lng)
-    const validLocations = detectedLocations.filter(
-      loc => loc.lat != null && loc.lng != null
-    ) as Location[]; // Assert non-null lat/lng for valid locations
-    
-    // Convert valid locations to markers
-    const newMarkers = validLocations.map(location => ({
-      lat: location.lat!, // Safe due to filter
-      lng: location.lng!, // Safe due to filter
-      title: location.name,
-      type: location.type
-    }));
-    
-    setMarkers(newMarkers);
-    
-    // Frame the pins: centre on their middle, zoom by how spread out they are
-    // (a city's worth of places should open at street level, not continent).
-    if (validLocations.length > 0) {
-      const lats = validLocations.map(l => l.lat!);
-      const lngs = validLocations.map(l => l.lng!);
-      const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lngs) - Math.min(...lngs));
-      setMapCenter({ lat: (Math.max(...lats) + Math.min(...lats)) / 2, lng: (Math.max(...lngs) + Math.min(...lngs)) / 2 });
-      setMapZoom(span < 0.02 ? 15 : span < 0.08 ? 13 : span < 0.3 ? 12 : span < 1 ? 10 : span < 5 ? 7 : span < 20 ? 5 : 3);
-    } else {
-      setMapCenter(undefined);
-      setMapZoom(2);
-    }
+    setFocus(undefined);
+    setMarkers(
+      detectedLocations
+        .filter(loc => loc.lat != null && loc.lng != null && !loc.isMock)
+        .map(loc => ({
+          lat: loc.lat!,
+          lng: loc.lng!,
+          title: loc.name,
+          address: loc.formattedAddress,
+          type: loc.type,
+        }))
+    );
   }, [detectedLocations]);
-  
-  // Update center when selected location changes
+
+  // Only places picked from the list move the camera (not empty-map clicks),
+  // and only when the selection itself changes.
+  const listedNames = useRef(new Set<string>());
+  const placesPanel = useRef<HTMLDetailsElement>(null);
+  listedNames.current = new Set(detectedLocations.map(l => l.name));
   useEffect(() => {
-    if (selectedLocation && selectedLocation.lat != null && selectedLocation.lng != null) {
-      setMapCenter({ lat: selectedLocation.lat, lng: selectedLocation.lng });
-      setMapZoom(10);
+    if (selectedLocation && listedNames.current.has(selectedLocation.name) && selectedLocation.lat != null && selectedLocation.lng != null) {
+      setFocus({ lat: selectedLocation.lat, lng: selectedLocation.lng });
+      // On a narrow map the open panel covers the centre, where the picked
+      // pin lands, so fold the panel away.
+      const panel = placesPanel.current;
+      if (panel && (panel.parentElement?.clientWidth ?? 0) < 760) panel.open = false;
     }
   }, [selectedLocation]);
-  
+
   // Handle map click to select location
   const handleMapClick = (location: { lat: number; lng: number }) => {
     const newLocation: Location = {
@@ -103,8 +89,9 @@ export function TravelMapComponent() {
         <div className="h-full">
           <MapComponent 
             markers={markers}
-            center={mapCenter}
-            zoom={mapZoom}
+            center={focus}
+            zoom={17}
+            focusTitle={focus ? selectedLocation?.name : undefined}
             onMapClick={handleMapClick}
             height="100%"
           />
@@ -113,7 +100,7 @@ export function TravelMapComponent() {
       
       {/* Places on the map: collapsible list; each item recenters the map. */}
       {detectedLocations.length > 0 && (
-        <details className="group/places absolute right-3 top-15 z-10 w-[min(18rem,calc(100%-1.5rem))] rounded-xl border bg-background shadow-overlay">
+        <details ref={placesPanel} className="group/places absolute right-3 top-15 z-10 w-[min(18rem,calc(100%-1.5rem))] rounded-xl border bg-background shadow-overlay">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
             <span className="flex items-center gap-1.5">
               <MapPin className="size-4 text-raspberry" aria-hidden="true" />
