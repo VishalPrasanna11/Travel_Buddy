@@ -104,7 +104,7 @@ class TripRequest(BaseModel):
     """Typed slots extracted from the user's message."""
 
     intent: Literal[
-        "plan_trip", "flights", "hotels", "attractions", "restaurants",
+        "plan_trip", "flights", "hotels", "cars", "attractions", "restaurants",
         "weather", "packing", "general", "greeting",
     ] = Field(description="Main thing the user wants")
     destination: Optional[str] = Field(None, description="Destination city/region, as a searchable name, e.g. 'Lisbon, Portugal'")
@@ -135,6 +135,8 @@ Pick `sections` to cover the request:
 - plan_trip: flights (only if an origin is known), hotels, attractions, restaurants, weather
 - flights / hotels / attractions / restaurants / weather: that section (add weather when packing)
 - cars: only when they mention renting a car, driving, a road trip, or ask for cars
+- intent "cars" = only a car rental ("rent a car at LAX March 3-7"): destination is the pickup city or
+  airport, start_date/end_date are pickup and drop-off, sections = cars
 - general questions about a place (neighborhoods, best time to visit, culture): attractions only if useful, else none
 - greeting: none
 Never invent an origin or dates the user did not give or clearly imply.
@@ -198,7 +200,7 @@ async def intake_node(state: TravelState) -> Dict[str, Any]:
             messages.append(SystemMessage(content=f"Conversation so far:\n{hist}"))
         messages.append(HumanMessage(content=state["user_input"]))
         req: TripRequest = await intake_llm().ainvoke(messages)
-    trip = req.model_dump()
+    trip = normalize_trip(req.model_dump(), state["today"])
     prefs = state.get("prefs") or {}
     if not trip.get("adults") and prefs.get("default_adults"):
         trip["adults"] = prefs["default_adults"]
@@ -217,7 +219,27 @@ async def intake_node(state: TravelState) -> Dict[str, Any]:
     return {"trip": await announce_plan(trip)}
 
 
+def normalize_trip(trip: Dict[str, Any], today: str) -> Dict[str, Any]:
+    """Code rules on top of the model's parse: car-only requests search cars, and
+    dates that have already passed are dropped (the clarification asks again)."""
+    if trip.get("intent") == "cars" and "cars" not in (trip.get("sections") or []):
+        trip["sections"] = [*(trip.get("sections") or []), "cars"]
+    start = trip.get("start_date")
+    if start and str(start)[:10] < today:
+        trip["past_dates"] = {"start_date": start, "end_date": trip.get("end_date")}
+        trip["start_date"] = None
+        trip["end_date"] = None
+    elif trip.get("end_date") and str(trip["end_date"])[:10] < str(start or today)[:10]:
+        trip["end_date"] = None  # end before start: ask rather than guess
+    return trip
+
+
 async def announce_plan(trip: Dict[str, Any]) -> Dict[str, Any]:
+    if trip.get("intent") == "plan_trip":
+        sections = list(trip.get("sections") or [])
+        trip["sections"] = sections + [s for s in PLAN_CORE_SECTIONS if s not in sections]
+        if trip.get("origin") and "flights" not in trip["sections"]:
+            trip["sections"].append("flights")
     if not trip.get("origin") and "flights" in trip["sections"]:
         trip["sections"] = [s for s in trip["sections"] if s != "flights"]
     planned = [s for s in SECTIONS if s in trip["sections"] and trip.get("destination")]
@@ -229,7 +251,10 @@ async def announce_plan(trip: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------- clarify
-NEEDS_DESTINATION = {"plan_trip", "flights", "hotels", "attractions", "restaurants", "weather", "packing"}
+NEEDS_DESTINATION = {"plan_trip", "flights", "hotels", "cars", "attractions", "restaurants", "weather", "packing"}
+# Searches every full trip plan gets (flights too when there's an origin); the model's
+# section choice can add to these, never drop them.
+PLAN_CORE_SECTIONS = ["hotels", "attractions", "restaurants", "weather"]
 
 
 def missing_fields(trip: Dict[str, Any], state: TravelState) -> List[str]:
@@ -237,9 +262,9 @@ def missing_fields(trip: Dict[str, Any], state: TravelState) -> List[str]:
     missing: List[str] = []
     if intent in NEEDS_DESTINATION and (not trip.get("destination") or trip.get("destination_ambiguous")):
         missing.append("destination")
-    if intent in ("plan_trip", "hotels", "flights") and not trip.get("start_date"):
+    if intent in ("plan_trip", "hotels", "flights", "cars") and not trip.get("start_date"):
         missing.append("dates")
-    elif intent in ("plan_trip", "hotels") and not trip.get("end_date"):
+    elif intent in ("plan_trip", "hotels", "cars") and not trip.get("end_date"):
         missing.append("dates")
     if intent == "flights" and not trip.get("origin"):
         missing.append("origin")
@@ -287,6 +312,8 @@ def clarification_payload(trip: Dict[str, Any], state: TravelState) -> Dict[str,
         })
     labels = {"destination": "where", "dates": "when", "origin": "where from"}
     question = "Quick check before I search: " + ", ".join(labels[m] for m in missing) + "?"
+    if trip.get("past_dates") and "dates" in missing:
+        question = "Those dates have already passed. " + question
     return {"question": question, "missing": missing, "fields": fields, "trip": {k: trip.get(k) for k in ("intent", "destination", "origin", "start_date", "end_date", "adults")}}
 
 

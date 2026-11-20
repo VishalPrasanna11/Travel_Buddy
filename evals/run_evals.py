@@ -400,14 +400,14 @@ def compact_data(final: Dict[str, Any]) -> Dict[str, Any]:
         return {k: e.get(k) for k in keys if e.get(k) not in (None, [], {})}
 
     out: Dict[str, Any] = {"trip": final.get("trip"), "sections": final.get("sections")}
-    out["flights"] = [pick(f, ["carrier_name", "price", "stops", "duration_minutes", "segments"]) for f in (final.get("flights") or [])[:4]]
+    out["flights"] = [pick(f, ["carrier_name", "price", "stops", "duration_minutes", "segments"]) for f in (final.get("flights") or [])[:10]]
     for f in out["flights"]:
         f["segments"] = [{"from": s.get("departure", {}).get("airport"), "to": s.get("arrival", {}).get("airport"),
                           "dep": s.get("departure", {}).get("at"), "arr": s.get("arrival", {}).get("at")} for s in f.get("segments") or []]
-    out["hotels"] = [pick(h, ["name", "price", "nightly_price", "star_rating", "guest_rating", "address", "refundable"]) for h in (final.get("hotels") or [])[:6]]
-    out["cars"] = [pick(c, ["name", "vendor", "price", "category"]) for c in (final.get("cars") or [])[:4]]
+    out["hotels"] = [pick(h, ["name", "price", "nightly_price", "star_rating", "guest_rating", "address", "refundable"]) for h in (final.get("hotels") or [])[:10]]
+    out["cars"] = [pick(c, ["name", "vendor", "price", "category"]) for c in (final.get("cars") or [])[:10]]
     for k in ("attractions", "restaurants"):
-        out[k] = [pick(p, ["name", "rating", "total_ratings", "price_level", "address"]) for p in (final.get(k) or [])[:8]]
+        out[k] = [pick(p, ["name", "rating", "total_ratings", "price_level", "address"]) for p in (final.get(k) or [])[:10]]
     wx = final.get("weather") or {}
     out["weather"] = {"is_simulated": wx.get("is_simulated"), "days": [pick(d, ["date", "temp_min", "temp_max", "condition", "pop"]) for d in wx.get("days") or []]}
     it = final.get("itinerary") or {}
@@ -417,7 +417,7 @@ def compact_data(final: Dict[str, Any]) -> Dict[str, Any]:
 
 def judge(client, model: str, history: List[Dict[str, str]], turn: Turn, criteria: str) -> Dict[str, Any]:
     convo = "\n".join(f"{m['role'].upper()}: {m['content'][:1500]}" for m in history)
-    data = json.dumps(compact_data(turn.final or {}), default=str)[:12000]
+    data = json.dumps(compact_data(turn.final or {}), default=str)[:30000]
     user = f"CONVERSATION SO FAR:\n{convo or '(none)'}\n\nUSER REQUEST:\n{turn.prompt}\n\nASSISTANT ANSWER:\n{turn.answer[:8000]}\n\nSTRUCTURED DATA:\n{data}"
     resp = client.chat.completions.create(
         model=model,
