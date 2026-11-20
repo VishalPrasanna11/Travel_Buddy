@@ -1,11 +1,7 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Globe, MessageCircle, Share2, Loader2, CheckCircle } from "lucide-react";
+import { Loader2, CheckCircle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-// TODO(Phase 3, clarify): legal links point at routes that don't exist yet and
-// the social links are placeholders. Content is unchanged here; only styling.
 
 const Footer = () => {
     const [email, setEmail] = useState("");
@@ -20,11 +16,11 @@ const Footer = () => {
         setError("");
 
         if (!email.trim()) {
-            setError("Email is required");
+            setError("Enter your email address.");
             return;
         }
         if (!isValidEmail(email)) {
-            setError("Please enter a valid email address");
+            setError("That email address doesn't look complete. Check it and try again.");
             return;
         }
 
@@ -42,25 +38,20 @@ const Footer = () => {
             setTimeout(() => setIsSuccess(false), 3000);
         } catch (err) {
             console.error("Subscription error:", err);
-            setError("Failed to subscribe. Please try again later.");
+            setError("We couldn't sign you up just now. Try again in a minute.");
         } finally {
             setIsLoading(false);
         }
     };
-
-    const linkClass =
-        "text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center min-h-11";
-    const iconLinkClass =
-        "inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors";
 
     return (
         <footer className="border-t bg-muted">
             <div className="mx-auto max-w-6xl px-gutter md:px-gutter-lg py-12">
                 <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between">
                     <div className="max-w-md space-y-3">
-                        <h2 className="text-2xl font-semibold">Stay inspired</h2>
+                        <h2 className="text-heading font-semibold">Trip ideas by email</h2>
                         <p className="text-muted-foreground">
-                            Subscribe to receive AI travel insights and personalized destination recommendations
+                            Occasional trip ideas and TravelBuddy updates.
                         </p>
                         <form onSubmit={handleSubmit} noValidate>
                             <label htmlFor="footer-email" className="sr-only">Email address</label>
@@ -90,32 +81,24 @@ const Footer = () => {
                             </div>
                             <p className="mt-2 min-h-5 text-sm" role="status" aria-live="polite">
                                 {error && <span id="footer-email-error" className="text-destructive">{error}</span>}
-                                {isSuccess && <span className="text-success-ink">Successfully subscribed!</span>}
+                                {isSuccess && <span className="text-success-ink">You're on the list. Thanks!</span>}
                             </p>
                         </form>
-                    </div>
-
-                    <div className="flex gap-1">
-                        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className={iconLinkClass}>
-                            <Globe size={20} />
-                        </a>
-                        <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter" className={iconLinkClass}>
-                            <MessageCircle size={20} />
-                        </a>
-                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className={iconLinkClass}>
-                            <Share2 size={20} />
-                        </a>
                     </div>
                 </div>
 
                 <div className="mt-10 flex flex-col gap-4 border-t pt-6 md:flex-row md:items-center md:justify-between">
                     <span className="text-sm text-muted-foreground">&copy; {new Date().getFullYear()} TravelBuddy</span>
-                    <nav aria-label="Footer" className="flex flex-wrap gap-x-6">
-                        <Link to="/about" className={linkClass}>About</Link>
-                        <Link to="/contact" className={linkClass}>Contact</Link>
-                        <Link to="/privacy" className={linkClass}>Privacy Policy</Link>
-                        <Link to="/terms" className={linkClass}>Terms of Service</Link>
-                    </nav>
+                    <a
+                        href="https://github.com/DAMG7245/Travel_Buddy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+                    >
+                        Source on GitHub
+                        <ExternalLink className="size-3.5" aria-hidden="true" />
+                        <span className="sr-only">(opens in a new tab)</span>
+                    </a>
                 </div>
             </div>
         </footer>
