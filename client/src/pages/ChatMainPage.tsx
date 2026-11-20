@@ -84,6 +84,7 @@ function ChatArea({ id, mapToggle, openMap }: { id: string; mapToggle: React.Rea
         onShowOnMap={showOnMap}
         onAnswerClarification={chat.answerClarification}
         onFeedback={chat.giveFeedback}
+        conversationId={id}
       />
     </div>
   );

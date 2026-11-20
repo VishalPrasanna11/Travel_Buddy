@@ -12,24 +12,22 @@ router = APIRouter()
 class CreateSessionRequest(BaseModel):
     user_email: EmailStr
     
-    class Config:
-        schema_extra = {
-            "example": {
-                "user_email": "user@example.com"
-            }
+    model_config = {"json_schema_extra": {
+        "example": {
+            "user_email": "user@example.com"
         }
+    }}
 
 class SaveMessageRequest(BaseModel):
     role: str
     content: str
     
-    class Config:
-        schema_extra = {
-            "example": {
-                "role": "user",
-                "content": "What are the best destinations to visit in Europe?"
-            }
+    model_config = {"json_schema_extra": {
+        "example": {
+            "role": "user",
+            "content": "What are the best destinations to visit in Europe?"
         }
+    }}
 
 # Endpoint to create a new chat session
 @router.post("/chat-history", status_code=201)

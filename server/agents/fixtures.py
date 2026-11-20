@@ -171,8 +171,9 @@ def parse_request(text: str, today: str):
         if word in t:
             intent = it
             break
+    wants_car = bool(re.search(r"\b(car|cars|rental|drive|road trip)\b", t))
     sections = {
-        "plan_trip": ["flights", "hotels", "attractions", "restaurants", "weather"],
+        "plan_trip": ["flights", "hotels", "attractions", "restaurants", "weather"] + (["cars"] if wants_car else []),
         "flights": ["flights"], "hotels": ["hotels"], "restaurants": ["restaurants"], "weather": ["weather"], "general": ["attractions"],
     }[intent]
     return TripRequest(

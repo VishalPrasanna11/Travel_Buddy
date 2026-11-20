@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { displayLocale } from "@/lib/format"
 import {
   AirVent, BedDouble, Briefcase, ChevronDown, ChevronLeft, ChevronRight, Coffee, Dumbbell, ExternalLink, Luggage,
   Car, ParkingCircle, PawPrint, Plane, Sparkles, UtensilsCrossed, Waves, Wifi, Wine, Accessibility, Shirt, Loader2,
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { bookEntity, useApiToken, ApiError } from "@/api/ConversationsApi"
 import type { CarRental, Flight, FlightSegment, Hotel, Price } from "./types"
+import { BookmarkButton } from "./bookmark-button"
 
 /**
  * Flight, hotel and car cards. Times are shown in each airport's local time
@@ -22,7 +24,7 @@ export function money(p?: Price, amount?: number) {
   if (!p) return null
   const value = amount ?? p.amount
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency || "USD", maximumFractionDigits: value >= 100 ? 0 : 2 }).format(value)
+    return new Intl.NumberFormat(displayLocale(), { style: "currency", currency: p.currency || "USD", maximumFractionDigits: value >= 100 ? 0 : 2 }).format(value)
   } catch {
     return `${p.currency} ${value}`
   }
@@ -37,7 +39,7 @@ function localParts(iso?: string) {
   const date = new Date(Date.UTC(+y, +mo - 1, +d, 12))
   return {
     time: `${h}:${mi}`,
-    date: date.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
+    date: date.toLocaleDateString(displayLocale(), { month: "short", day: "numeric", timeZone: "UTC" }),
     day: `${y}-${mo}-${d}`,
     offset: /([+-]\d{2}:\d{2}|Z)$/.exec(iso)?.[1],
   }
@@ -263,8 +265,9 @@ export function HotelCard({ h }: { h: Hotel }) {
   const was = h.price?.published && h.price.published > (h.price.total ?? h.price.amount) ? money(h.price, h.price.published) : null
   const amenities = (h.amenities ?? []).filter((a) => AMENITY_ICON[a]).slice(0, 7)
   return (
-    <li className="flex flex-col overflow-hidden rounded-xl border bg-card sm:flex-row">
+    <li className="relative flex flex-col overflow-hidden rounded-xl border bg-card sm:flex-row">
       <Carousel hotel={h} />
+      <BookmarkButton entity={h} kind="hotel" className="absolute left-2 top-2" />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3">
         <div className="flex flex-wrap items-start justify-between gap-x-3">
           <div className="min-w-0">
@@ -277,7 +280,7 @@ export function HotelCard({ h }: { h: Hotel }) {
               )}
               {h.guest_rating != null && (
                 <span className="tabular">
-                  <span className="rounded bg-success-tint px-1 font-semibold text-ink">{h.guest_rating}</span> guests{h.review_count ? ` · ${h.review_count.toLocaleString()} reviews` : ""}
+                  <span className="rounded bg-success-tint px-1 font-semibold text-ink">{h.guest_rating}</span> guests{h.review_count ? ` · ${h.review_count.toLocaleString(displayLocale())} reviews` : ""}
                 </span>
               )}
             </div>
@@ -329,6 +332,9 @@ export function CarCard({ c }: { c: CarRental }) {
       <div className="min-w-0 flex-1">
         <p className="font-semibold leading-snug">{c.name}</p>
         <p className="text-meta text-muted-foreground">{[c.vendor, c.category, c.transmission, c.seats ? `${c.seats} seats` : null, c.bags ? `${c.bags} bags` : null].filter(Boolean).join(" · ")}</p>
+        {(c.mileage || c.free_cancellation) && (
+          <p className="text-meta text-success-ink">{[c.mileage, c.free_cancellation ? "Free cancellation" : null].filter(Boolean).join(" · ")}</p>
+        )}
         {c.pickup_location && <p className="text-meta text-muted-foreground">{c.pickup_location}{pick ? ` · ${pick.date} ${pick.time}` : ""}{drop ? ` → ${drop.date} ${drop.time}` : ""}</p>}
       </div>
       <div className="flex flex-col items-end gap-1.5">

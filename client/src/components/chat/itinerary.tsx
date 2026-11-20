@@ -1,5 +1,9 @@
-import { useId } from "react"
-import { BedDouble, CalendarDays, CalendarPlus, Car, Coffee, Footprints, Landmark, MapPin, Plane, StickyNote, Utensils, type LucideIcon } from "lucide-react"
+import { useId, useState } from "react"
+import { displayLocale } from "@/lib/format"
+import { BedDouble, CalendarDays, CalendarPlus, Car, Coffee, FileDown, Footprints, Landmark, Link2, Loader2, MapPin, Plane, StickyNote, Utensils, type LucideIcon } from "lucide-react"
+import { toast } from "sonner"
+import { downloadTripFile, shareTrip } from "@/api/AccountApi"
+import { useApiToken } from "@/api/ConversationsApi"
 
 import { Button } from "@/components/ui/button"
 import { downloadFile, itineraryToIcs } from "@/lib/ics"
@@ -28,7 +32,7 @@ const SLOT_LABEL: Record<ItineraryItem["slot"], string> = { morning: "Morning", 
 
 function fmtDay(date: string) {
   const d = new Date(`${date}T12:00:00`)
-  return Number.isNaN(d.getTime()) ? date : d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })
+  return Number.isNaN(d.getTime()) ? date : d.toLocaleDateString(displayLocale(), { weekday: "long", month: "short", day: "numeric" })
 }
 
 function pinsFor(items: ItineraryItem[], index: ReturnType<typeof entityIndex>): Location[] {
@@ -49,7 +53,51 @@ function pinsFor(items: ItineraryItem[], index: ReturnType<typeof entityIndex>):
   return pins
 }
 
-export function ItineraryView({ data, onShowOnMap }: { data?: ResponseData; onShowOnMap?: (pins: Location[], label: string) => void }) {
+/** PDF download and read-only share link (server; needs the trip saved to the account). */
+function TripActions({ tripId }: { tripId: string }) {
+  const getToken = useApiToken()
+  const [busy, setBusy] = useState<"pdf" | "share" | null>(null)
+  const pdf = async () => {
+    setBusy("pdf")
+    try {
+      await downloadTripFile(tripId, "pdf", await getToken())
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed.")
+    } finally {
+      setBusy(null)
+    }
+  }
+  const share = async () => {
+    setBusy("share")
+    try {
+      const { url } = await shareTrip(tripId, await getToken())
+      try {
+        await navigator.clipboard.writeText(url)
+        toast.success("Share link copied", { description: "Anyone with the link can view this plan (read-only)." })
+      } catch {
+        toast.success("Share link ready", { description: url })
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't create a share link.")
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={pdf} disabled={busy !== null}>
+        {busy === "pdf" ? <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> : <FileDown aria-hidden="true" />}
+        PDF
+      </Button>
+      <Button size="sm" variant="outline" onClick={share} disabled={busy !== null}>
+        {busy === "share" ? <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
+        Share
+      </Button>
+    </>
+  )
+}
+
+export function ItineraryView({ data, onShowOnMap, tripId }: { data?: ResponseData; onShowOnMap?: (pins: Location[], label: string) => void; tripId?: string }) {
   const headingId = useId()
   const it: Itinerary | undefined = data?.itinerary
   if (!it?.days?.length) return null
@@ -74,10 +122,13 @@ export function ItineraryView({ data, onShowOnMap }: { data?: ResponseData; onSh
           Day by day
           <span className="text-sm font-normal text-muted-foreground tabular">{it.days.length} days</span>
         </h4>
-        <Button size="sm" variant="outline" onClick={exportIcs}>
-          <CalendarPlus aria-hidden="true" />
-          Add to calendar
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={exportIcs}>
+            <CalendarPlus aria-hidden="true" />
+            Add to calendar
+          </Button>
+          {tripId && <TripActions tripId={tripId} />}
+        </div>
       </div>
       {it.summary && <p className="mb-4 text-sm text-muted-foreground">{it.summary}</p>}
 

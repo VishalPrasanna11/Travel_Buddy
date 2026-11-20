@@ -33,6 +33,8 @@ type ChatComponentProps = {
   onShowOnMap?: (pins: Location[], label: string) => void;
   onAnswerClarification?: (messageId: string, answers: Record<string, unknown>, summary: string) => void;
   onFeedback?: (messageId: string, rating: 'up' | 'down', reason?: string) => Promise<boolean>;
+  /** Server conversation id, for exports/sharing (only once the trip is saved to the account). */
+  conversationId?: string;
 };
 
 const NEAR_BOTTOM_PX = 120;
@@ -92,7 +94,7 @@ function ErrorTurn({ message, onRetry, onEdit, onNewTrip, disabled }: { message:
 
 export default function ChatComponent({
   messages, input, pending, pendingSince, ready,
-  onInputChange, onSend, onPick, onRetry, onEdit, onNewTrip, onStop, onShowOnMap, onAnswerClarification, onFeedback,
+  onInputChange, onSend, onPick, onRetry, onEdit, onNewTrip, onStop, onShowOnMap, onAnswerClarification, onFeedback, conversationId,
 }: ChatComponentProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
@@ -226,7 +228,7 @@ export default function ChatComponent({
                       }
                     >
                       <AnswerMarkdown>{m.content}</AnswerMarkdown>
-                      <ItineraryView data={m.data} onShowOnMap={onShowOnMap} />
+                      <ItineraryView data={m.data} onShowOnMap={onShowOnMap} tripId={m.serverId ? conversationId : undefined} />
                       <WeatherNote data={m.data} answer={m.content} />
                       <ResultCards data={m.data} />
                       {m.id === lastAssistantId && <SuggestionChips suggestions={m.data?.suggestions} onPick={onPick} disabled={pending} />}

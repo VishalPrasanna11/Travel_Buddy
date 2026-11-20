@@ -1,17 +1,18 @@
 import { useId, useState } from "react"
-import { AlertTriangle, BedDouble, Clock, ExternalLink, Globe, Landmark, MapPin, Plane, Star, Utensils } from "lucide-react"
+import { displayLocale } from "@/lib/format"
+import { AlertTriangle, BedDouble, Car, Clock, ExternalLink, Globe, Landmark, MapPin, Plane, Star, Utensils } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Notice } from "@/components/ui/notice"
-import { FlightCard, HotelCard } from "./travel-cards"
-import { attractionsOf, flightsOf, hotelsOf, photoSrc, restaurantsOf, type Photo, type Place, type ResponseData, type SectionKey, type SectionStatus } from "./types"
+import { CarCard, FlightCard, HotelCard } from "./travel-cards"
+import { BookmarkButton } from "./bookmark-button"
+import { attractionsOf, carsOf, flightsOf, hotelsOf, photoSrc, restaurantsOf, type Photo, type Place, type ResponseData, type SectionKey, type SectionStatus } from "./types"
 
 /**
  * Structured results that came back with an answer. Everything shown here is
  * a field the API returned. Missing fields are left out, never guessed.
  */
 
-const nf = new Intl.NumberFormat(undefined)
 
 function mapsUrl(p: Place) {
   if (p.google_maps_uri) return p.google_maps_uri
@@ -44,7 +45,7 @@ function Rating({ value, count }: { value?: number | string; count?: number }) {
     <span className="inline-flex items-center gap-1 text-meta tabular">
       <Star className="size-3.5 fill-amber text-amber-ink" aria-hidden="true" />
       <span className="font-semibold text-ink">{n.toFixed(1)}</span>
-      {count != null && <span className="text-muted-foreground">({nf.format(count)} reviews)</span>}
+      {count != null && <span className="text-muted-foreground">({new Intl.NumberFormat(displayLocale()).format(count)} reviews)</span>}
       <span className="sr-only"> out of 5</span>
     </span>
   )
@@ -87,12 +88,13 @@ function PlacePhoto({ photos, legacy, name, Icon }: { photos?: Photo[]; legacy?:
   )
 }
 
-function PlaceCard({ place, Icon }: { place: Place; Icon: typeof MapPin }) {
+function PlaceCard({ place, Icon, kind }: { place: Place; Icon: typeof MapPin; kind: "place" | "restaurant" }) {
   const closed = closedDays(place)
   const hours = todayHours(place)
   return (
-    <li className="group flex flex-col overflow-hidden rounded-xl border bg-card transition-colors hover:border-gray-strong">
+    <li className="group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-colors hover:border-gray-strong">
       <PlacePhoto photos={place.photos} legacy={place.photo_url} name={place.name} Icon={Icon} />
+      <BookmarkButton entity={place} kind={kind} className="absolute right-2 top-2" />
       <div className="flex flex-1 flex-col gap-1 p-3">
         <h5 className="line-clamp-2 font-display text-base font-semibold leading-snug" title={place.name}>
           {place.name}
@@ -159,7 +161,7 @@ function Section({ title, icon: Icon, count, children, note }: { title: string; 
 
 const INITIAL = 4
 
-function PlaceSection({ title, places, icon }: { title: string; places: Place[]; icon: typeof MapPin }) {
+function PlaceSection({ title, places, icon, kind }: { title: string; places: Place[]; icon: typeof MapPin; kind: "place" | "restaurant" }) {
   const [expanded, setExpanded] = useState(false)
   const listId = useId()
   if (!places.length) return null
@@ -167,7 +169,7 @@ function PlaceSection({ title, places, icon }: { title: string; places: Place[];
   return (
     <Section title={title} icon={icon} count={places.length} note="Photos and ratings from Google">
       <ul id={listId} className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
-        {shown.map((p, i) => <PlaceCard key={p.id ?? `${p.name}-${i}`} place={p} Icon={icon} />)}
+        {shown.map((p, i) => <PlaceCard key={p.id ?? `${p.name}-${i}`} place={p} Icon={icon} kind={kind} />)}
       </ul>
       {places.length > INITIAL && (
         <button
@@ -189,7 +191,7 @@ function asOf(iso?: string) {
   if (!iso) return undefined
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return undefined
-  return `Prices as of ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`
+  return `Prices as of ${d.toLocaleTimeString(displayLocale(), { hour: "numeric", minute: "2-digit" })}`
 }
 
 function ExpandableList<T>({ items, initial, render }: { items: T[]; initial: number; render: (item: T, i: number) => React.ReactNode }) {
@@ -234,7 +236,7 @@ export function SectionNotices({ sections, only }: { sections?: ResponseData["se
           description={
             <>
               {s.message}
-              {s.alternatives?.length ? <span className="block text-muted-foreground">Try {s.alternatives.map((d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })).join(" or ")}.</span> : null}
+              {s.alternatives?.length ? <span className="block text-muted-foreground">Try {s.alternatives.map((d) => new Date(`${d}T12:00:00`).toLocaleDateString(displayLocale(), { month: "short", day: "numeric" })).join(" or ")}.</span> : null}
             </>
           }
         />
@@ -249,7 +251,8 @@ export function ResultCards({ data }: { data?: ResponseData }) {
   const hotels = hotelsOf(data)
   const attractions = attractionsOf(data)
   const restaurants = restaurantsOf(data)
-  if (!flights.length && !hotels.length && !attractions.length && !restaurants.length) return <SectionNotices sections={data.sections} />
+  const cars = carsOf(data)
+  if (!flights.length && !hotels.length && !cars.length && !attractions.length && !restaurants.length) return <SectionNotices sections={data.sections} />
 
   return (
     <div className={cn("max-w-3xl")}>
@@ -263,8 +266,13 @@ export function ResultCards({ data }: { data?: ResponseData }) {
           <ExpandableList items={hotels} initial={3} render={(h, i) => <HotelCard key={h.id ?? i} h={h} />} />
         </Section>
       )}
-      <PlaceSection title="Places to see" places={attractions} icon={Landmark} />
-      <PlaceSection title="Places to eat" places={restaurants} icon={Utensils} />
+      {cars.length > 0 && (
+        <Section title="Car rentals" icon={Car} count={cars.length} note={asOf(cars[0]?.price?.as_of ?? cars[0]?.fetched_at)}>
+          <ExpandableList items={cars} initial={3} render={(c, i) => <CarCard key={c.id ?? i} c={c} />} />
+        </Section>
+      )}
+      <PlaceSection title="Places to see" places={attractions} icon={Landmark} kind="place" />
+      <PlaceSection title="Places to eat" places={restaurants} icon={Utensils} kind="restaurant" />
       <SectionNotices sections={data.sections} />
     </div>
   )

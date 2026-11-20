@@ -17,6 +17,10 @@ from routes.placesRoute import router as places_router
 from routes.bookingRoute import router as booking_router
 from routes.conversationRoute import router as conversation_router
 from routes.feedbackRoute import router as feedback_router
+from routes.preferencesRoute import router as preferences_router
+from routes.savedPlacesRoute import router as saved_places_router
+from routes.tripsRoute import router as trips_router, public_router as shared_router
+from schemas.api import SCHEMA_VERSION
 from middlewares.errors import RequestIdMiddleware, install_error_handlers
 
 logging.basicConfig(
@@ -50,9 +54,20 @@ async def lifespan(app):
 
 app = FastAPI(
     title="TravelBuddy API",
-    description="AI-powered travel planning assistant API",
-    version="1.0.0",
+    description=(
+        "AI-powered travel planning assistant API. Streaming answers via Server-Sent Events at "
+        "POST /api/llm/ask; every JSON error is {error: {code, message, retryable, section, request_id}}. "
+        f"Schema version {SCHEMA_VERSION} (also sent as the X-Schema-Version header)."
+    ),
+    version="2.0.0",
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "llm", "description": "Ask TravelBuddy (SSE streaming and legacy JSON)"},
+        {"name": "conversations", "description": "Server-side history"},
+        {"name": "places", "description": "Photo proxy and place details"},
+        {"name": "booking", "description": "Checkout links for flights, hotels and cars"},
+        {"name": "trips", "description": "Export and share itineraries"},
+    ],
 )
 
 origins = [
@@ -73,9 +88,21 @@ app.add_middleware(
     expose_headers=["X-Request-ID", "Retry-After", "X-Schema-Version"],
 )
 
+# Compression: brotli when the client accepts it, gzip otherwise. SSE (/api/llm/ask) is excluded so
+# events are never buffered, and photos are already-compressed images.
+from brotli_asgi import BrotliMiddleware  # noqa: E402
+
+app.add_middleware(
+    BrotliMiddleware,
+    quality=4,
+    minimum_size=600,
+    gzip_fallback=True,
+    excluded_handlers=[r"^/api/llm/ask", r"^/api/places/photo/", r"^/api/trips/.+/export"],
+)
 app.add_middleware(RequestIdMiddleware)
 install_error_handlers(app)
 
+app.include_router(preferences_router, prefix="/api/users/preferences", tags=["users"])
 app.include_router(user_router, prefix="/api/users", tags=["users"])
 app.include_router(llm_router, prefix="/api/llm", tags=["llm"])
 app.include_router(llm_chat_history_router, prefix="/api/user", tags=["user"])
@@ -86,13 +113,17 @@ app.include_router(places_router, prefix="/api/places", tags=["places"])
 app.include_router(booking_router, prefix="/api/book", tags=["booking"])
 app.include_router(conversation_router, prefix="/api/conversations", tags=["conversations"])
 app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
+app.include_router(saved_places_router, prefix="/api/saved-places", tags=["saved"])
+app.include_router(trips_router, prefix="/api/trips", tags=["trips"])
+app.include_router(shared_router, prefix="/api/shared", tags=["trips"])
 
 
 @app.get("/api/health", tags=["root"])
 async def health():
     return {
         "message": "Welcome to TravelBuddy API",
-        "version": "1.0.0",
+        "version": "2.0.0",
+        "schema_version": SCHEMA_VERSION,
         "status": "online",
     }
 

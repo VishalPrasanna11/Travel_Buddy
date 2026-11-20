@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Integer
-from sqlalchemy.ext.declarative import declarative_base
-from pydantic import BaseModel, Field
+from sqlalchemy.orm import declarative_base
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 
 Base = declarative_base()
@@ -65,5 +65,4 @@ class UserResponse(BaseModel):
     country: Optional[str] = None
     phone: Optional[str] = None
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

@@ -257,11 +257,21 @@ def _search_flights(params: Dict[str, str]) -> Dict[str, Any]:
             raw_itineraries = []
         fetched_at = now_iso()
         currency = data.get("currency") or "USD"
-        flights = []
-        for itin in raw_itineraries[:MAX_RESULTS]:
+        # Cheapest first, then fastest; drop repeats of the same flights at the same price.
+        parsed = []
+        seen = set()
+        for itin in raw_itineraries[:60]:
             if not itin:
                 continue
             f = normalize_flight(itin, cabin_class, adults, fetched_at, currency)
+            key = (tuple(s.flight_number for s in f.segments + f.return_segments), f.price.amount if f.price else None)
+            if key in seen:
+                continue
+            seen.add(key)
+            parsed.append((f, itin))
+        parsed.sort(key=lambda p: ((p[0].price.amount if p[0].price else 1e12), p[0].duration_minutes or 1e9))
+        flights = []
+        for f, itin in parsed[:MAX_RESULTS]:
             # Keep the raw offer server-side for the Book button (get-payment-url).
             offer_cache.put(f.id, "flight", {
                 "flight": itin,

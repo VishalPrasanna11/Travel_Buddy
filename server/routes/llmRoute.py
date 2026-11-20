@@ -17,6 +17,7 @@ from schemas.api import AskRequest
 from agents.rootAgent import root_agent
 from agents import stream_runner
 from routes.conversationRoute import persist_turn
+from routes.preferencesRoute import load_preferences
 
 router = APIRouter()
 
@@ -120,9 +121,11 @@ async def ask_stream(payload: AskRequest, request: Request, ident: Optional[Iden
         if m.get("content")
     ]
     answers = (resume or {}).get("answers") or {}
+    prefs = await asyncio.to_thread(load_preferences, ident.sub if ident else None)
     events = root_agent.astream(
         {"input": payload.query, "history": history},
         request_id=request_id,
+        prefs=prefs,
         resume=answers if resume else None,
         thread_id=thread_id,
     )

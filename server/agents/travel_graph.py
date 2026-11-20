@@ -49,10 +49,11 @@ from schemas.itinerary import Itinerary
 from tools.google_restaurant_api import perform_google_restaurant_search
 from tools.hotel_search import _search_hotels
 from tools.weather_tool import weather_tool
+from tools.car_search import search_cars
 
 logger = logging.getLogger("travel_graph")
 
-SECTIONS = ["flights", "hotels", "attractions", "restaurants", "weather"]
+SECTIONS = ["flights", "hotels", "cars", "attractions", "restaurants", "weather"]
 SECTION_TIMEOUT_S = 50
 FIXTURE_LATENCY = {"flights": 1.6, "hotels": 1.2, "attractions": 0.6, "restaurants": 0.5, "weather": 0.4, "cars": 0.9}
 
@@ -63,6 +64,7 @@ AGENT_LABELS = {
     "attractions": "Places to see",
     "restaurants": "Restaurants",
     "weather": "Weather",
+    "cars": "Car rentals",
     "compose": "Writing your answer",
 }
 
@@ -114,7 +116,7 @@ class TripRequest(BaseModel):
     cabin_class: Optional[Literal["Economy", "PremiumEconomy", "Business", "First"]] = None
     cuisine: Optional[str] = Field(None, description="Cuisine preference for restaurants, if any")
     interests: List[str] = Field(default_factory=list, description="Interests such as museums, hiking, nightlife")
-    sections: List[Literal["flights", "hotels", "attractions", "restaurants", "weather"]] = Field(
+    sections: List[Literal["flights", "hotels", "cars", "attractions", "restaurants", "weather"]] = Field(
         default_factory=list,
         description="Which live searches answer this question. A full trip plan needs all that apply.",
     )
@@ -132,6 +134,7 @@ Use the conversation for context: a follow-up like "show cheaper hotels" keeps t
 Pick `sections` to cover the request:
 - plan_trip: flights (only if an origin is known), hotels, attractions, restaurants, weather
 - flights / hotels / attractions / restaurants / weather: that section (add weather when packing)
+- cars: only when they mention renting a car, driving, a road trip, or ask for cars
 - general questions about a place (neighborhoods, best time to visit, culture): attractions only if useful, else none
 - greeting: none
 Never invent an origin or dates the user did not give or clearly imply.
@@ -199,8 +202,13 @@ async def intake_node(state: TravelState) -> Dict[str, Any]:
     prefs = state.get("prefs") or {}
     if not trip.get("adults") and prefs.get("default_adults"):
         trip["adults"] = prefs["default_adults"]
-    if not trip.get("origin") and prefs.get("home_airport") and "flights" in trip.get("sections", []):
+    if not trip.get("origin") and prefs.get("home_airport") and (
+        "flights" in trip.get("sections", []) or trip.get("intent") == "plan_trip"
+    ):
         trip["origin"] = prefs["home_airport"]
+        trip["origin_from_preferences"] = True
+        if trip.get("intent") == "plan_trip" and "flights" not in trip["sections"]:
+            trip["sections"] = ["flights", *trip["sections"]]
     await emit({"event": "agent", "agent": "intake", "state": "done"})
     if not trip.get("in_scope", True):
         return {"trip": trip, "status": "out_of_scope"}
@@ -568,6 +576,19 @@ async def _weather(trip, prefs):
     return out
 
 
+async def _cars(trip, prefs):
+    if not trip.get("start_date") or not trip.get("end_date"):
+        return _section("skipped", message="Add pick-up and drop-off dates to see rental cars.")
+    if use_fixtures():
+        return _tool_result("cars", fixtures.section("cars"), "No rental cars found.")
+    data = await asyncio.to_thread(search_cars, trip["destination"], trip["start_date"], trip["end_date"])
+    return _tool_result("cars", data, f"No rental cars in {trip['destination']} for those dates.")
+
+
+async def cars_node(state):
+    return await _run_section("cars", state, _cars)
+
+
 async def flights_node(state):
     return await _run_section("flights", state, _flights)
 
@@ -619,6 +640,11 @@ def compact_results(sections: Dict[str, Any]) -> Dict[str, Any]:
                 {"id": h["id"], "name": h.get("name"), "stars": h.get("star_rating"), "guest_rating": h.get("guest_rating"),
                  "price": h.get("price"), "nightly": h.get("nightly_price")}
                 for h in items[:6]
+            ]
+        elif name == "cars":
+            entry["items"] = [
+                {"id": c["id"], "name": c.get("name"), "vendor": c.get("vendor"), "category": c.get("category"), "price": c.get("price")}
+                for c in items[:5]
             ]
         elif name in ("attractions", "restaurants"):
             entry["items"] = [
@@ -711,7 +737,8 @@ class FollowUps(BaseModel):
 SUGGEST_PROMPT = """Suggest 3 next steps the traveler could tap to refine or extend this trip, phrased as their own request,
 under 40 characters each, specific to the destination and results (e.g. "Add a Sintra day trip", "Show cheaper hotels",
 "What's the weather like?"). If a section failed or was skipped, one suggestion should retry or fill it
-(e.g. "Search flights from Boston"). No numbers you can't see in RESULTS."""
+(e.g. "Search flights from Boston"). Never suggest re-running a section whose status is "ok" — it already has
+results. No numbers you can't see in RESULTS."""
 
 _suggest_llm = None
 
@@ -773,7 +800,7 @@ async def compose_node(state: TravelState) -> Dict[str, Any]:
 
 
 # ------------------------------------------------------------------ graph
-PARALLEL_NODES = ["destination", "flights", "hotels", "attractions", "restaurants", "weather"]
+PARALLEL_NODES = ["destination", "flights", "hotels", "cars", "attractions", "restaurants", "weather"]
 
 
 def route_after_intake(state: TravelState):
@@ -793,6 +820,7 @@ def build_travel_graph():
     g.add_node("attractions", attractions_node)
     g.add_node("restaurants", restaurants_node)
     g.add_node("weather", weather_node)
+    g.add_node("cars", cars_node)
     g.add_node("compose", compose_node)
     g.add_node("clarify", clarify_node)
     g.add_node("scope_reply", scope_reply_node)
@@ -842,7 +870,7 @@ def final_payload(state: Dict[str, Any]) -> Dict[str, Any]:
             for k, v in sections.items()
         },
     }
-    for name in ("flights", "hotels", "attractions", "restaurants"):
+    for name in ("flights", "hotels", "cars", "attractions", "restaurants"):
         if name in sections:
             payload[name] = sections[name].get("items") or []
     if "weather" in sections:

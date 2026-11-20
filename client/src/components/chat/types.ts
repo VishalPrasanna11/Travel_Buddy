@@ -142,6 +142,9 @@ export type CarRental = Entity & {
   pickup_at?: string
   dropoff_at?: string
   price?: Price
+  mileage?: string
+  free_cancellation?: boolean
+  days?: number
   bookable?: boolean
   booking_url?: string
 }

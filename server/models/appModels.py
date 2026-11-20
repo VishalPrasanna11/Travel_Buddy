@@ -63,3 +63,41 @@ class Feedback(AppBase):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (Index("ux_feedback_user_message", "user_sub", "message_id", unique=True),)
+
+
+class UserPreferences(AppBase):
+    __tablename__ = "user_preferences"
+
+    user_sub = Column(String(128), primary_key=True)
+    locale = Column(String(16), nullable=True)  # BCP 47, e.g. en-US
+    currency = Column(String(3), nullable=True)  # ISO 4217
+    units = Column(String(8), nullable=True)  # metric | imperial
+    home_airport = Column(String(80), nullable=True)
+    default_adults = Column(Integer, nullable=True)
+    default_children = Column(Integer, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class SavedPlace(AppBase):
+    __tablename__ = "saved_places"
+
+    id = Column(String(64), primary_key=True, default=_uuid)
+    user_sub = Column(String(128), nullable=False, index=True)
+    entity_id = Column(String(64), nullable=False)
+    kind = Column(String(16), nullable=False)  # place | restaurant | hotel
+    name = Column(String(200), nullable=False)
+    data = Column(JSON, nullable=True)  # entity snapshot (address, rating, photo ref, location…)
+    conversation_id = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (Index("ux_saved_user_entity", "user_sub", "entity_id", unique=True),)
+
+
+class TripShare(AppBase):
+    __tablename__ = "trip_shares"
+
+    token = Column(String(32), primary_key=True)
+    conversation_id = Column(String(64), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_sub = Column(String(128), nullable=False)
+    snapshot = Column(JSON, nullable=False)  # read-only copy: answer, itinerary, entities
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

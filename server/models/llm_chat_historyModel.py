@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey, func, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -74,8 +74,7 @@ class MessageResponse(BaseModel):
     content: str
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SessionResponse(BaseModel):
@@ -85,8 +84,7 @@ class SessionResponse(BaseModel):
     last_updated: datetime
     messages: Optional[List[MessageResponse]] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SessionWithPreview(BaseModel):
@@ -97,5 +95,4 @@ class SessionWithPreview(BaseModel):
     message_count: int
     first_message: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

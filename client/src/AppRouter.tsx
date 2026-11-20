@@ -5,6 +5,7 @@ import Layout from "./layouts/layout";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import { RouteLoader } from "./components/system/FullPageLoader";
+import { PreferencesSync } from "./api/AccountApi";
 
 // Everything except the landing page is split out, so first-time visitors
 // don't download chat, Shiki, maps or flight search up front.
@@ -15,6 +16,9 @@ const ChatMapsPage = lazy(() => import("./pages/ChatMapsRoute"));
 const FlightSearchPage = lazy(() => import("./pages/FlightSearchPage"));
 const WaitlistPage = lazy(() => import("./pages/WaitlistPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const SavedPage = lazy(() => import("./pages/SavedPage"));
+const SharedTripPage = lazy(() => import("./pages/SharedTripPage"));
 
 const Page = ({ children, label }: { children: ReactNode; label?: string }) => (
   <Suspense fallback={<RouteLoader label={label} />}>{children}</Suspense>
@@ -31,6 +35,8 @@ const LegacyChatRedirect = () => {
 
 const AppRouter = () => {
   return (
+    <>
+    <PreferencesSync />
     <Routes>
       {/* Public */}
       <Route
@@ -62,8 +68,26 @@ const AppRouter = () => {
         }
       />
 
+      {/* Public, read-only shared itinerary */}
+      <Route
+        path="/share/:token"
+        element={
+          <Layout showSidebar={false} showFooter>
+            <Page label="Opening the shared trip…">
+              <SharedTripPage />
+            </Page>
+          </Layout>
+        }
+      />
+
       {/* Dev only (tree-shaken from production builds): the chat without the
           Auth0 gate, for running against a local fixture server. */}
+      {import.meta.env.DEV && (
+        <Route path="/dev/settings" element={<Layout showSidebar><Page><SettingsPage /></Page></Layout>} />
+      )}
+      {import.meta.env.DEV && (
+        <Route path="/dev/saved" element={<Layout showSidebar><Page><SavedPage /></Page></Layout>} />
+      )}
       {import.meta.env.DEV && (
         <Route
           path="/dev/chat/:id"
@@ -115,6 +139,27 @@ const AppRouter = () => {
         />
 
         <Route
+          path="/saved"
+          element={
+            <Layout showSidebar>
+              <Page label="Loading your saved places…">
+                <SavedPage />
+              </Page>
+            </Layout>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <Layout showSidebar>
+              <Page label="Loading settings…">
+                <SettingsPage />
+              </Page>
+            </Layout>
+          }
+        />
+
+        <Route
           path="/flights"
           element={
             <Layout showSidebar>
@@ -138,6 +183,7 @@ const AppRouter = () => {
         }
       />
     </Routes>
+    </>
   );
 };
 

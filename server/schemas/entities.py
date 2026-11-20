@@ -272,6 +272,9 @@ class CarRental(EntityBase):
     dropoff_at: Optional[str] = None
     price: Optional[Price] = None
     mileage: Optional[str] = None
+    free_cancellation: Optional[bool] = None
+    days: Optional[int] = None
+    bookable: bool = False
     booking_url: Optional[str] = None
 
 

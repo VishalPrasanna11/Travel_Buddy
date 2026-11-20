@@ -1,4 +1,5 @@
 import { Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Sun, type LucideIcon } from "lucide-react"
+import { displayLocale } from "@/lib/format"
 
 import { Notice } from "@/components/ui/notice"
 import { Badge } from "@/components/ui/badge"
@@ -33,8 +34,8 @@ function dayLabel(date: string) {
   const d = new Date(`${date}T12:00:00`)
   if (Number.isNaN(d.getTime())) return { weekday: date, day: "" }
   return {
-    weekday: d.toLocaleDateString(undefined, { weekday: "short" }),
-    day: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    weekday: d.toLocaleDateString(displayLocale(), { weekday: "short" }),
+    day: d.toLocaleDateString(displayLocale(), { month: "short", day: "numeric" }),
   }
 }
 

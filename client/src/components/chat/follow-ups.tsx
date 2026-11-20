@@ -1,4 +1,5 @@
 import { useId, useState } from "react"
+import { displayLocale } from "@/lib/format"
 import { ArrowRight, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react"
 import { toast } from "sonner"
 
@@ -19,7 +20,7 @@ const chip =
 
 function fmtDate(d: string) {
   const t = new Date(`${d}T12:00:00`)
-  return Number.isNaN(t.getTime()) ? d : t.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  return Number.isNaN(t.getTime()) ? d : t.toLocaleDateString(displayLocale(), { month: "short", day: "numeric" })
 }
 
 type Answers = { destination?: string; origin?: string; start_date?: string; end_date?: string; skip?: string[] }

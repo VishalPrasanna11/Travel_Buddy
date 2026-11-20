@@ -12,6 +12,7 @@ from miniagents.Hotels.agent import hotel_search_agent, format_hotel_results
 from miniagents.Restaurants.agent import restaurant_search_agent, format_restaurant_results
 from miniagents.Attractions.agent import attractions_search_agent, format_attractions_results
 from miniagents.Itinerary.agent import itinerary_agent
+from miniagents.Cars.agent import car_search_agent
 
 # Set up logging
 logging.basicConfig(
@@ -227,6 +228,20 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "car_search_agent",
+            "description": "Search rental cars with live prices (RouteStack). Input: location=City&pickup_date=YYYY-MM-DD&dropoff_date=YYYY-MM-DD",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "input_str": {"type": "string"}
+                },
+                "required": ["input_str"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "itinerary_agent",
             "description": "Create a comprehensive travel itinerary including flights, hotels, attractions, and restaurants for a specific destination and date range.",
             "parameters": {
@@ -245,7 +260,8 @@ tool_funcs = {
     "hotel_search_agent": hotel_search_agent,
     "restaurant_search_agent": restaurant_search_agent,
     "attractions_search_agent": attractions_search_agent,
-    "itinerary_agent": itinerary_agent
+    "itinerary_agent": itinerary_agent,
+    "car_search_agent": car_search_agent,
 }
 
 # ------------------ Agent Node ------------------ #
@@ -600,6 +616,12 @@ def planning_agent_node(state: PlanningAgentState) -> PlanningAgentState:
     Use `itinerary_agent` to create complete travel plans. Examples:
     - "Plan a 5-day trip to Rome from New York in June 2027"
     - "destination=Rome&startDate=2027-06-10&endDate=2027-06-15&origin=New York&travelers=2"
+
+    DATA INTEGRITY (strict): never simulate, estimate or invent prices, ratings, times, seats, rooms or weather.
+    Every number you show must come from a tool response in this conversation. If a tool failed or returned
+    nothing, say so plainly and offer to search again — do not fill the gap with made-up values.
+
+    Use `car_search_agent` for rental cars: "location=Lisbon&pickup_date=2027-03-12&dropoff_date=2027-03-15".
 
     IMPORTANT: When the user does not specify a year, default to the next occurrence of that date in the future. Never reject a date that the user explicitly provided — just pass it through to the tool. The tools will handle date validation if needed.
 

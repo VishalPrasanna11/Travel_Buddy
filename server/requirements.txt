@@ -22,3 +22,5 @@ langchain-community>=0.3.21
 langgraph>=1.2.22
 airportsdata>=20250909
 tzdata>=2025.2
+brotli-asgi>=1.4.0
+fpdf2>=2.8.1
